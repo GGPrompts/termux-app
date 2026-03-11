@@ -516,8 +516,25 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private void setCodefactorySurfaceView() {
         mCodefactorySurfaceView = findViewById(R.id.codefactory_surface_view);
         if (mCodefactorySurfaceView != null) {
-            Logger.logDebug(LOG_TAG, "CodefactorySurfaceView found in layout, native lib loaded: "
-                + CodefactoryBridge.isLoaded());
+            // Ensure the SurfaceView starts GONE (classic terminal is the default)
+            mCodefactorySurfaceView.setVisibility(View.GONE);
+            mGpuRendererActive = false;
+
+            // Register fallback listener: if the GPU renderer crashes, switch back
+            // to the classic terminal automatically
+            mCodefactorySurfaceView.setFallbackListener(reason -> {
+                Logger.logError(LOG_TAG, "GPU renderer failed, falling back to classic: " + reason);
+                if (mGpuRendererActive) {
+                    mGpuRendererActive = false;
+                    mCodefactorySurfaceView.setVisibility(View.GONE);
+                    mTerminalView.setVisibility(View.VISIBLE);
+                    mTerminalView.requestFocus();
+                    showToast("GPU renderer crashed, switched to classic terminal", true);
+                }
+            });
+
+            Logger.logDebug(LOG_TAG, "CodefactorySurfaceView found in layout, native lib available: "
+                + CodefactoryBridge.isAvailable());
         } else {
             Logger.logDebug(LOG_TAG, "CodefactorySurfaceView not found in layout");
         }
@@ -526,11 +543,34 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     /**
      * Toggle between the classic Java TerminalView and the GPU-accelerated
      * CodefactorySurfaceView. For development/testing purposes.
+     *
+     * SAFETY: If the native library is not available, refuses to switch to GPU
+     * renderer and shows a Toast explaining why. The classic Java terminal is
+     * ALWAYS the fallback.
      */
     public void toggleGpuRenderer() {
         if (mCodefactorySurfaceView == null || mTerminalView == null) {
             Logger.logError(LOG_TAG, "Cannot toggle GPU renderer: views not initialized");
             return;
+        }
+
+        if (!mGpuRendererActive) {
+            // Trying to switch TO GPU renderer -- check if native lib is available
+            if (!CodefactoryBridge.isAvailable()) {
+                String error = CodefactoryBridge.getLoadError();
+                String msg = "GPU renderer not available"
+                    + (error != null ? ": " + error : " (native library failed to load)");
+                showToast(msg, true);
+                Logger.logWarn(LOG_TAG, msg);
+                return;
+            }
+
+            // Also check if the SurfaceView reports native support
+            if (!mCodefactorySurfaceView.isNativeAvailable()) {
+                showToast("GPU renderer not available (native support disabled)", true);
+                Logger.logWarn(LOG_TAG, "toggleGpuRenderer: SurfaceView reports native unavailable");
+                return;
+            }
         }
 
         mGpuRendererActive = !mGpuRendererActive;
@@ -539,8 +579,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mTerminalView.setVisibility(View.GONE);
             mCodefactorySurfaceView.setVisibility(View.VISIBLE);
             mCodefactorySurfaceView.requestFocus();
-            showToast("GPU renderer enabled" +
-                (CodefactoryBridge.isLoaded() ? "" : " (native lib not loaded!)"), false);
+            showToast("GPU renderer enabled", false);
         } else {
             mCodefactorySurfaceView.setVisibility(View.GONE);
             mTerminalView.setVisibility(View.VISIBLE);
@@ -709,8 +748,15 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         menu.add(Menu.NONE, CONTEXT_MENU_HELP_ID, Menu.NONE, R.string.action_open_help);
         menu.add(Menu.NONE, CONTEXT_MENU_SETTINGS_ID, Menu.NONE, R.string.action_open_settings);
         menu.add(Menu.NONE, CONTEXT_MENU_REPORT_ID, Menu.NONE, R.string.action_report_issue);
-        menu.add(Menu.NONE, CONTEXT_MENU_TOGGLE_GPU_RENDERER, Menu.NONE,
-            mGpuRendererActive ? "Switch to Classic Renderer" : "Switch to GPU Renderer");
+        String gpuMenuLabel;
+        if (mGpuRendererActive) {
+            gpuMenuLabel = "Switch to Classic Renderer";
+        } else if (CodefactoryBridge.isAvailable()) {
+            gpuMenuLabel = "Switch to GPU Renderer";
+        } else {
+            gpuMenuLabel = "GPU Renderer (unavailable)";
+        }
+        menu.add(Menu.NONE, CONTEXT_MENU_TOGGLE_GPU_RENDERER, Menu.NONE, gpuMenuLabel);
     }
 
     /** Hook system menu to show context menu instead. */

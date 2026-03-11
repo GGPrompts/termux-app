@@ -7,6 +7,7 @@ import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.View;
 
 /**
  * A SurfaceView that hosts the wgpu-based terminal renderer.
@@ -16,6 +17,12 @@ import android.view.SurfaceView;
  *
  * This view can coexist with Termux's TerminalView -- toggle visibility to
  * switch between the Java renderer and the GPU renderer during development.
+ *
+ * SAFETY: All JNI calls go through CodefactoryBridge's safe wrappers which
+ * check isAvailable() and catch Throwable. If the native library crashes or
+ * is unavailable, this view degrades gracefully. The activity can call
+ * {@link #setFallbackListener(FallbackListener)} to be notified when the
+ * GPU renderer fails and should switch back to the classic terminal.
  */
 public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder.Callback {
 
@@ -26,6 +33,20 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
 
     /** Whether the surface is currently valid (between surfaceCreated and surfaceDestroyed). */
     private boolean mSurfaceValid = false;
+
+    /** Number of consecutive JNI failures. Used to trigger fallback. */
+    private int mJniFailureCount = 0;
+
+    /** Max consecutive failures before triggering fallback. */
+    private static final int MAX_JNI_FAILURES = 3;
+
+    /** Callback to notify the activity that the GPU renderer has failed. */
+    public interface FallbackListener {
+        /** Called on the main thread when the GPU renderer has failed too many times. */
+        void onGpuRendererFailed(String reason);
+    }
+
+    private FallbackListener mFallbackListener;
 
     public CodefactorySurfaceView(Context context) {
         super(context);
@@ -59,6 +80,14 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
         }
     }
 
+    /**
+     * Set a listener to be notified when the GPU renderer fails.
+     * The activity should use this to switch back to the classic TerminalView.
+     */
+    public void setFallbackListener(FallbackListener listener) {
+        mFallbackListener = listener;
+    }
+
     // -----------------------------------------------------------------------
     // SurfaceHolder.Callback implementation
     // -----------------------------------------------------------------------
@@ -69,7 +98,12 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
         mSurfaceValid = true;
 
         if (mNativeAvailable) {
-            CodefactoryBridge.nativeSurfaceCreated(holder.getSurface());
+            try {
+                CodefactoryBridge.surfaceCreated(holder.getSurface());
+                mJniFailureCount = 0;
+            } catch (Throwable t) {
+                handleJniFailure("surfaceCreated", t);
+            }
         }
     }
 
@@ -78,7 +112,12 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
         Log.i(TAG, "surfaceChanged: " + width + "x" + height + " format=" + format);
 
         if (mNativeAvailable) {
-            CodefactoryBridge.nativeSurfaceChanged(holder.getSurface(), width, height);
+            try {
+                CodefactoryBridge.surfaceChanged(holder.getSurface(), width, height);
+                mJniFailureCount = 0;
+            } catch (Throwable t) {
+                handleJniFailure("surfaceChanged", t);
+            }
         }
     }
 
@@ -88,7 +127,12 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
         mSurfaceValid = false;
 
         if (mNativeAvailable) {
-            CodefactoryBridge.nativeSurfaceDestroyed();
+            try {
+                CodefactoryBridge.surfaceDestroyed();
+            } catch (Throwable t) {
+                // Surface is being destroyed anyway, just log it
+                Log.w(TAG, "surfaceDestroyed: JNI call failed (non-critical)", t);
+            }
         }
     }
 
@@ -99,12 +143,16 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         if (mNativeAvailable) {
-            CodefactoryBridge.nativeTouchEvent(
-                event.getAction(),
-                event.getX(),
-                event.getY()
-            );
-            return true;
+            try {
+                CodefactoryBridge.touchEvent(
+                    event.getAction(),
+                    event.getX(),
+                    event.getY()
+                );
+                return true;
+            } catch (Throwable t) {
+                handleJniFailure("onTouchEvent", t);
+            }
         }
         return super.onTouchEvent(event);
     }
@@ -112,12 +160,16 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (mNativeAvailable) {
-            CodefactoryBridge.nativeKeyEvent(
-                keyCode,
-                event.getUnicodeChar(),
-                event.getMetaState()
-            );
-            return true;
+            try {
+                CodefactoryBridge.keyEvent(
+                    keyCode,
+                    event.getUnicodeChar(),
+                    event.getMetaState()
+                );
+                return true;
+            } catch (Throwable t) {
+                handleJniFailure("onKeyDown", t);
+            }
         }
         return super.onKeyDown(keyCode, event);
     }
@@ -145,7 +197,48 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
      */
     public void requestRender() {
         if (mNativeAvailable && mSurfaceValid) {
-            CodefactoryBridge.nativeRenderFrame();
+            try {
+                CodefactoryBridge.renderFrame();
+            } catch (Throwable t) {
+                handleJniFailure("requestRender", t);
+            }
+        }
+    }
+
+    /**
+     * Returns true if the native library is available for use.
+     */
+    public boolean isNativeAvailable() {
+        return mNativeAvailable;
+    }
+
+    // -----------------------------------------------------------------------
+    // Failure handling
+    // -----------------------------------------------------------------------
+
+    /**
+     * Handle a JNI failure. After MAX_JNI_FAILURES consecutive failures,
+     * triggers the fallback listener to switch back to the classic terminal.
+     */
+    private void handleJniFailure(String method, Throwable t) {
+        mJniFailureCount++;
+        Log.e(TAG, method + ": JNI failure #" + mJniFailureCount, t);
+
+        if (mJniFailureCount >= MAX_JNI_FAILURES) {
+            Log.e(TAG, "Too many JNI failures (" + mJniFailureCount
+                + "), disabling native renderer");
+            mNativeAvailable = false;
+
+            if (mFallbackListener != null) {
+                // Post to main thread to avoid calling back during event dispatch
+                post(() -> {
+                    if (mFallbackListener != null) {
+                        mFallbackListener.onGpuRendererFailed(
+                            "GPU renderer failed after " + mJniFailureCount
+                            + " errors. Last error in " + method + ": " + t.getMessage());
+                    }
+                });
+            }
         }
     }
 }
