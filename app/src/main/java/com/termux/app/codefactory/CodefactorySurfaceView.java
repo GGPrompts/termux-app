@@ -3,6 +3,7 @@ package com.termux.app.codefactory;
 import android.content.Context;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.view.Choreographer;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
@@ -34,11 +35,36 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
     /** Whether the surface is currently valid (between surfaceCreated and surfaceDestroyed). */
     private boolean mSurfaceValid = false;
 
+    /** Whether a terminal has been spawned via nativeSpawnTerminal. */
+    private boolean mTerminalSpawned = false;
+
+    /** Whether the Choreographer render loop is running. */
+    private boolean mRenderLoopRunning = false;
+
     /** Number of consecutive JNI failures. Used to trigger fallback. */
     private int mJniFailureCount = 0;
 
     /** Max consecutive failures before triggering fallback. */
     private static final int MAX_JNI_FAILURES = 3;
+
+    /** Choreographer callback for the render loop. */
+    private final Choreographer.FrameCallback mRenderCallback = new Choreographer.FrameCallback() {
+        @Override
+        public void doFrame(long frameTimeNanos) {
+            if (!mRenderLoopRunning || !mSurfaceValid || !mNativeAvailable) {
+                return;
+            }
+            try {
+                CodefactoryBridge.renderFrame();
+            } catch (Throwable t) {
+                handleJniFailure("renderLoop", t);
+            }
+            // Schedule the next frame
+            if (mRenderLoopRunning) {
+                Choreographer.getInstance().postFrameCallback(this);
+            }
+        }
+    };
 
     /** Callback to notify the activity that the GPU renderer has failed. */
     public interface FallbackListener {
@@ -115,6 +141,14 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
             try {
                 CodefactoryBridge.surfaceChanged(holder.getSurface(), width, height);
                 mJniFailureCount = 0;
+
+                // Spawn a terminal if we haven't already and the view is visible
+                if (!mTerminalSpawned && getVisibility() == View.VISIBLE) {
+                    spawnTerminalForSurface(width, height);
+                }
+
+                // Start the render loop if not already running
+                startRenderLoop();
             } catch (Throwable t) {
                 handleJniFailure("surfaceChanged", t);
             }
@@ -124,6 +158,7 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
     @Override
     public void surfaceDestroyed(SurfaceHolder holder) {
         Log.i(TAG, "surfaceDestroyed");
+        stopRenderLoop();
         mSurfaceValid = false;
 
         if (mNativeAvailable) {
@@ -228,6 +263,7 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
             Log.e(TAG, "Too many JNI failures (" + mJniFailureCount
                 + "), disabling native renderer");
             mNativeAvailable = false;
+            stopRenderLoop();
 
             if (mFallbackListener != null) {
                 // Post to main thread to avoid calling back during event dispatch
@@ -240,5 +276,99 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
                 });
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Terminal lifecycle
+    // -----------------------------------------------------------------------
+
+    /**
+     * Spawn a terminal session for the current surface dimensions.
+     * Computes grid cols/rows from pixel size and a hardcoded cell size
+     * that matches the Rust renderer's font metrics (~18x36 at 32px font).
+     */
+    private void spawnTerminalForSurface(int width, int height) {
+        // If a pipeline is already alive (e.g., surface recreated after rotation),
+        // don't spawn a new shell -- just keep using the existing one.
+        if (CodefactoryBridge.isPipelineAlive()) {
+            Log.i(TAG, "spawnTerminalForSurface: pipeline already alive, skipping spawn");
+            mTerminalSpawned = true;
+            return;
+        }
+
+        // Cell size must match renderer.rs GlyphAtlas font_size=32.0
+        // fontdue at 32px gives approximately 18px wide, 36px tall cells
+        // (the exact values come from the Rust side, but we need a reasonable
+        // estimate here to compute initial grid dimensions)
+        float cellWidth = 18.0f;
+        float cellHeight = 36.0f;
+
+        int cols = Math.max(1, (int) (width / cellWidth));
+        int rows = Math.max(1, (int) (height / cellHeight));
+
+        Log.i(TAG, "spawnTerminalForSurface: surface=" + width + "x" + height
+            + " -> grid=" + cols + "x" + rows);
+
+        // null shell = let Rust auto-detect (SHELL env var or Termux bash)
+        boolean ok = CodefactoryBridge.spawnTerminal(null, cols, rows);
+        if (ok) {
+            mTerminalSpawned = true;
+            Log.i(TAG, "Terminal spawned successfully");
+        } else {
+            Log.e(TAG, "Failed to spawn terminal");
+        }
+    }
+
+    /**
+     * Start the Choreographer-driven render loop.
+     * Each vsync calls nativeRenderFrame which checks the pipeline dirty flag,
+     * converts the grid if needed, and renders via wgpu. Frames where nothing
+     * changed are nearly free (dirty check is an atomic load).
+     */
+    private void startRenderLoop() {
+        if (mRenderLoopRunning) return;
+        mRenderLoopRunning = true;
+        Choreographer.getInstance().postFrameCallback(mRenderCallback);
+        Log.i(TAG, "Render loop started");
+    }
+
+    /**
+     * Stop the Choreographer-driven render loop.
+     */
+    private void stopRenderLoop() {
+        if (!mRenderLoopRunning) return;
+        mRenderLoopRunning = false;
+        Choreographer.getInstance().removeFrameCallback(mRenderCallback);
+        Log.i(TAG, "Render loop stopped");
+    }
+
+    /**
+     * Ensure the terminal is spawned when the view becomes visible.
+     * Called from onVisibilityChanged or when the Activity toggles the GPU renderer.
+     */
+    @Override
+    protected void onVisibilityChanged(View changedView, int visibility) {
+        super.onVisibilityChanged(changedView, visibility);
+
+        if (changedView == this) {
+            if (visibility == View.VISIBLE) {
+                Log.i(TAG, "View became visible");
+                if (mNativeAvailable && mSurfaceValid) {
+                    if (!mTerminalSpawned) {
+                        spawnTerminalForSurface(getWidth(), getHeight());
+                    }
+                    startRenderLoop();
+                }
+            } else {
+                Log.i(TAG, "View became hidden");
+                stopRenderLoop();
+            }
+        }
+    }
+
+    @Override
+    protected void onDetachedFromWindow() {
+        super.onDetachedFromWindow();
+        stopRenderLoop();
     }
 }
