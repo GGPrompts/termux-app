@@ -56,6 +56,8 @@ import com.termux.shared.theme.NightMode;
 import com.termux.shared.view.ViewUtils;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
+import com.termux.app.codefactory.CodefactoryBridge;
+import com.termux.app.codefactory.CodefactorySurfaceView;
 import com.termux.view.TerminalView;
 import com.termux.view.TerminalViewClient;
 
@@ -90,6 +92,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      * The {@link TerminalView} shown in  {@link TermuxActivity} that displays the terminal.
      */
     TerminalView mTerminalView;
+
+    /**
+     * The {@link CodefactorySurfaceView} for GPU-accelerated terminal rendering via wgpu.
+     * Initially hidden (GONE); toggle with {@link #toggleGpuRenderer()}.
+     */
+    CodefactorySurfaceView mCodefactorySurfaceView;
+
+    /**
+     * Whether the GPU renderer surface view is currently active (visible).
+     */
+    private boolean mGpuRendererActive = false;
 
     /**
      *  The {@link TerminalViewClient} interface implementation to allow for communication between
@@ -188,6 +201,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final int CONTEXT_MENU_HELP_ID = 7;
     private static final int CONTEXT_MENU_SETTINGS_ID = 8;
     private static final int CONTEXT_MENU_REPORT_ID = 9;
+    private static final int CONTEXT_MENU_TOGGLE_GPU_RENDERER = 12;
 
     private static final String ARG_TERMINAL_TOOLBAR_TEXT_INPUT = "terminal_toolbar_text_input";
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
@@ -242,6 +256,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         }
 
         setTermuxTerminalViewAndClients();
+
+        setCodefactorySurfaceView();
 
         setTerminalToolbarView(savedInstanceState);
 
@@ -497,6 +513,51 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mTermuxTerminalSessionActivityClient.onCreate();
     }
 
+    private void setCodefactorySurfaceView() {
+        mCodefactorySurfaceView = findViewById(R.id.codefactory_surface_view);
+        if (mCodefactorySurfaceView != null) {
+            Logger.logDebug(LOG_TAG, "CodefactorySurfaceView found in layout, native lib loaded: "
+                + CodefactoryBridge.isLoaded());
+        } else {
+            Logger.logDebug(LOG_TAG, "CodefactorySurfaceView not found in layout");
+        }
+    }
+
+    /**
+     * Toggle between the classic Java TerminalView and the GPU-accelerated
+     * CodefactorySurfaceView. For development/testing purposes.
+     */
+    public void toggleGpuRenderer() {
+        if (mCodefactorySurfaceView == null || mTerminalView == null) {
+            Logger.logError(LOG_TAG, "Cannot toggle GPU renderer: views not initialized");
+            return;
+        }
+
+        mGpuRendererActive = !mGpuRendererActive;
+
+        if (mGpuRendererActive) {
+            mTerminalView.setVisibility(View.GONE);
+            mCodefactorySurfaceView.setVisibility(View.VISIBLE);
+            mCodefactorySurfaceView.requestFocus();
+            showToast("GPU renderer enabled" +
+                (CodefactoryBridge.isLoaded() ? "" : " (native lib not loaded!)"), false);
+        } else {
+            mCodefactorySurfaceView.setVisibility(View.GONE);
+            mTerminalView.setVisibility(View.VISIBLE);
+            mTerminalView.requestFocus();
+            showToast("Classic terminal renderer enabled", false);
+        }
+
+        Logger.logInfo(LOG_TAG, "GPU renderer " + (mGpuRendererActive ? "activated" : "deactivated"));
+    }
+
+    /**
+     * Returns true if the GPU renderer is currently the active view.
+     */
+    public boolean isGpuRendererActive() {
+        return mGpuRendererActive;
+    }
+
     private void setTermuxSessionsListView() {
         ListView termuxSessionsListView = findViewById(R.id.terminal_sessions_list);
         mTermuxSessionListViewController = new TermuxSessionsListViewController(this, mTermuxService.getTermuxSessions());
@@ -648,6 +709,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         menu.add(Menu.NONE, CONTEXT_MENU_HELP_ID, Menu.NONE, R.string.action_open_help);
         menu.add(Menu.NONE, CONTEXT_MENU_SETTINGS_ID, Menu.NONE, R.string.action_open_settings);
         menu.add(Menu.NONE, CONTEXT_MENU_REPORT_ID, Menu.NONE, R.string.action_report_issue);
+        menu.add(Menu.NONE, CONTEXT_MENU_TOGGLE_GPU_RENDERER, Menu.NONE,
+            mGpuRendererActive ? "Switch to Classic Renderer" : "Switch to GPU Renderer");
     }
 
     /** Hook system menu to show context menu instead. */
@@ -697,6 +760,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 return true;
             case CONTEXT_MENU_REPORT_ID:
                 mTermuxTerminalViewClient.reportIssueFromTranscript();
+                return true;
+            case CONTEXT_MENU_TOGGLE_GPU_RENDERER:
+                toggleGpuRenderer();
                 return true;
             default:
                 return super.onContextItemSelected(item);
