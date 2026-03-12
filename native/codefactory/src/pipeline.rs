@@ -412,14 +412,22 @@ impl TerminalPipeline {
         }
         log::info!("TerminalPipeline::attach_fd: dup({}) -> {}", fd, our_fd);
 
-        // Create read and write handles from the duplicated fd.
-        // SAFETY: our_fd is a valid fd from dup(). We create two File objects
-        // from the same fd. This is safe because:
-        // - reads and writes go to the PTY master which supports concurrent access
-        // - we dup again for the writer so each File owns its own fd
-        let reader_fd = our_fd;
+        // Create read and write handles from separate dup'd fds.
+        // SAFETY: our_fd is a valid fd from dup(). We dup it twice more so
+        // that the reader File, writer File, and attached_fd each own an
+        // independent fd. This avoids double-close: each File closes its
+        // own fd on drop, and Drop::drop closes attached_fd (our_fd).
+        let reader_fd = unsafe { libc::dup(our_fd) };
+        if reader_fd < 0 {
+            unsafe { libc::close(our_fd) };
+            return Err(format!(
+                "Failed to dup fd for reader: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
         let writer_fd = unsafe { libc::dup(our_fd) };
         if writer_fd < 0 {
+            unsafe { libc::close(reader_fd) };
             unsafe { libc::close(our_fd) };
             return Err(format!(
                 "Failed to dup fd for writer: {}",
