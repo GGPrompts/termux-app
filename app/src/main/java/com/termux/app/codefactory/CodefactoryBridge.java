@@ -189,6 +189,57 @@ public class CodefactoryBridge {
         }
     }
 
+    /**
+     * Safe wrapper: forward mouse event to Rust renderer.
+     *
+     * RUST IMPLEMENTATION NOTE: The Rust side should implement
+     * Java_com_termux_app_codefactory_CodefactoryBridge_nativeMouseEvent
+     * which receives the mouse event type, button, pixel coordinates, and
+     * terminal cell coordinates. The Rust side should:
+     * 1. Update the renderer's cursor/selection state
+     * 2. If mouse reporting is enabled in the terminal, generate the appropriate
+     *    escape sequence (SGR, X10, etc.) and write it to the PTY
+     * 3. For scroll events, translate to scrollback if mouse reporting is off
+     *
+     * @param eventType 0=press, 1=release, 2=move, 3=scroll
+     * @param button    0=left, 1=middle, 2=right, 3=none (for move)
+     * @param pixelX    X coordinate in surface pixels
+     * @param pixelY    Y coordinate in surface pixels
+     * @param col       terminal column (0-based)
+     * @param row       terminal row (0-based)
+     * @param scrollDelta for scroll events: positive=up, negative=down; 0 otherwise
+     */
+    public static void mouseEvent(int eventType, int button, float pixelX, float pixelY,
+                                   int col, int row, float scrollDelta) {
+        if (!sLibraryLoaded) return;
+        try {
+            nativeMouseEvent(eventType, button, pixelX, pixelY, col, row, scrollDelta);
+        } catch (Throwable t) {
+            Log.e(TAG, "mouseEvent: JNI call failed", t);
+        }
+    }
+
+    /**
+     * Safe wrapper: resize the terminal grid.
+     *
+     * RUST IMPLEMENTATION NOTE: The Rust side should implement
+     * Java_com_termux_app_codefactory_CodefactoryBridge_nativeResizeTerminal
+     * which resizes the alacritty_terminal grid to the new dimensions and sends
+     * SIGWINCH to the PTY process. This is called when the surface size changes
+     * (e.g., DeX window resize, rotation).
+     *
+     * @param cols new column count
+     * @param rows new row count
+     */
+    public static void resizeTerminal(int cols, int rows) {
+        if (!sLibraryLoaded) return;
+        try {
+            nativeResizeTerminal(cols, rows);
+        } catch (Throwable t) {
+            Log.e(TAG, "resizeTerminal: JNI call failed", t);
+        }
+    }
+
     /** Safe wrapper: check if pipeline is alive. */
     public static boolean isPipelineAlive() {
         if (!sLibraryLoaded) return false;
@@ -375,4 +426,26 @@ public class CodefactoryBridge {
 
     /** Check if the backend is ready. Returns 1 if ready, 0 otherwise. */
     private static native int nativeIsBackendReady();
+
+    /**
+     * Forward a mouse event to Rust.
+     *
+     * @param eventType 0=press, 1=release, 2=move, 3=scroll
+     * @param button    0=left, 1=middle, 2=right, 3=none
+     * @param pixelX    X position in surface pixels
+     * @param pixelY    Y position in surface pixels
+     * @param col       terminal column (0-based)
+     * @param row       terminal row (0-based)
+     * @param scrollDelta scroll amount (positive=up, negative=down)
+     */
+    private static native void nativeMouseEvent(int eventType, int button,
+        float pixelX, float pixelY, int col, int row, float scrollDelta);
+
+    /**
+     * Resize the terminal grid. Sends SIGWINCH to the PTY process.
+     *
+     * @param cols new column count
+     * @param rows new row count
+     */
+    private static native void nativeResizeTerminal(int cols, int rows);
 }

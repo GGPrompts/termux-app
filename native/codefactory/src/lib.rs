@@ -615,6 +615,96 @@ pub extern "system" fn Java_com_termux_app_codefactory_CodefactoryBridge_nativeD
 }
 
 // ---------------------------------------------------------------------------
+// DeX support: mouse events and terminal resize
+// ---------------------------------------------------------------------------
+
+/// Forward a mouse event from the Java side.
+///
+/// This is called by DeXInputHandler when a mouse event occurs in the
+/// CodefactorySurfaceView. The Java side has already computed the terminal
+/// cell coordinates from pixel positions.
+///
+/// event_type: 0=press, 1=release, 2=move, 3=scroll
+/// button: 0=left, 1=middle, 2=right, 3=none (for move)
+/// pixel_x/y: position in surface pixels
+/// col/row: terminal cell coordinates (0-based)
+/// scroll_delta: for scroll events, positive=up, negative=down
+///
+/// TODO: Full implementation should:
+/// 1. Check if the terminal has mouse reporting enabled (via alacritty_terminal mode flags)
+/// 2. Generate the appropriate escape sequence (SGR, X10, etc.)
+/// 3. Write the sequence to the PTY
+/// 4. For selection: track start/end positions, highlight cells in renderer
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_termux_app_codefactory_CodefactoryBridge_nativeMouseEvent(
+    _env: JNIEnv,
+    _class: JClass,
+    event_type: jint,
+    button: jint,
+    pixel_x: jfloat,
+    pixel_y: jfloat,
+    col: jint,
+    row: jint,
+    scroll_delta: jfloat,
+) {
+    let _ = panic::catch_unwind(|| {
+        log::debug!(
+            "nativeMouseEvent: type={} btn={} px=({},{}) cell=({},{}) scroll={}",
+            event_type, button, pixel_x, pixel_y, col, row, scroll_delta
+        );
+
+        #[cfg(feature = "terminal-pipeline")]
+        {
+            let guard = lock_or_recover(&PIPELINE);
+            if let Some(ref pipeline) = *guard {
+                // For now, mouse events from DeX are handled on the Java side
+                // by generating SGR escape sequences directly via sendInput().
+                // When the Rust side has full mouse mode tracking, this will
+                // generate the sequences here instead.
+                let _ = pipeline;
+            }
+        }
+    });
+}
+
+/// Resize the terminal grid to new dimensions.
+///
+/// Called from the Java side after debouncing rapid resize events (e.g.,
+/// during DeX drag-resize). This resizes the alacritty_terminal grid and
+/// sends SIGWINCH to the PTY process.
+///
+/// cols: new terminal width in columns
+/// rows: new terminal height in rows
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_termux_app_codefactory_CodefactoryBridge_nativeResizeTerminal(
+    _env: JNIEnv,
+    _class: JClass,
+    cols: jint,
+    rows: jint,
+) {
+    let _ = panic::catch_unwind(|| {
+        log::info!("nativeResizeTerminal: {}x{}", cols, rows);
+
+        #[cfg(feature = "terminal-pipeline")]
+        {
+            let mut pipeline_guard = lock_or_recover(&PIPELINE);
+            if let Some(ref mut pipeline) = *pipeline_guard {
+                pipeline.resize(cols as u16, rows as u16);
+                log::info!("nativeResizeTerminal: pipeline resized to {}x{}", cols, rows);
+            } else {
+                log::warn!("nativeResizeTerminal: no pipeline to resize");
+            }
+        }
+
+        #[cfg(not(feature = "terminal-pipeline"))]
+        {
+            let _ = (cols, rows);
+            log::trace!("nativeResizeTerminal: terminal-pipeline feature is disabled");
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 

@@ -1,9 +1,12 @@
 package com.termux.app.codefactory;
 
 import android.content.Context;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.Choreographer;
+import android.view.InputDevice;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
@@ -53,6 +56,24 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
 
     /** Max consecutive failures before triggering fallback. */
     private static final int MAX_JNI_FAILURES = 3;
+
+    /** Handler for debouncing resize events during DeX window drag-resize. */
+    private final Handler mResizeHandler = new Handler(Looper.getMainLooper());
+
+    /** The pending resize runnable (cancelled on each new resize, only last one fires). */
+    private Runnable mPendingResize;
+
+    /** Debounce interval for resize events in milliseconds. */
+    private static final long RESIZE_DEBOUNCE_MS = 150;
+
+    /** Current grid columns (tracked for resize change detection). */
+    private int mCurrentCols = 0;
+
+    /** Current grid rows (tracked for resize change detection). */
+    private int mCurrentRows = 0;
+
+    /** DeX input handler for mouse events (set by activity). */
+    private DeXInputHandler mDeXInputHandler;
 
     /** Choreographer callback for the render loop. */
     private final Choreographer.FrameCallback mRenderCallback = new Choreographer.FrameCallback() {
@@ -121,6 +142,15 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
         mFallbackListener = listener;
     }
 
+    /**
+     * Set the DeX input handler for mouse event processing.
+     * When set, mouse events are routed through this handler instead of
+     * being treated as touch events.
+     */
+    public void setDeXInputHandler(DeXInputHandler handler) {
+        mDeXInputHandler = handler;
+    }
+
     // -----------------------------------------------------------------------
     // SurfaceHolder.Callback implementation
     // -----------------------------------------------------------------------
@@ -158,6 +188,11 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
                         // No external fd -- spawn our own shell (fallback)
                         spawnTerminalForSurface(width, height);
                     }
+                } else if (mTerminalSpawned) {
+                    // Terminal already running -- debounce the resize.
+                    // DeX drag-resize fires many surfaceChanged events in quick
+                    // succession; we only want to send SIGWINCH once at the end.
+                    debouncedResize(width, height);
                 }
 
                 // Start the render loop if not already running
@@ -192,6 +227,13 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
     public boolean onTouchEvent(MotionEvent event) {
         if (mNativeAvailable) {
             try {
+                // Route mouse events through DeXInputHandler for proper
+                // terminal mouse reporting (SGR format for TUI apps)
+                if (mDeXInputHandler != null && DeXInputHandler.isMouseInput(event)) {
+                    return mDeXInputHandler.handleMouseButtonEvent(event);
+                }
+
+                // Regular touch event (finger on touchscreen)
                 CodefactoryBridge.touchEvent(
                     event.getAction(),
                     event.getX(),
@@ -210,6 +252,17 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
             }
         }
         return super.onTouchEvent(event);
+    }
+
+    @Override
+    public boolean onGenericMotionEvent(MotionEvent event) {
+        // Handle mouse hover and scroll wheel events
+        if (mDeXInputHandler != null && DeXInputHandler.isMouseInput(event)) {
+            if (mDeXInputHandler.handleGenericMotionEvent(event)) {
+                return true;
+            }
+        }
+        return super.onGenericMotionEvent(event);
     }
 
     @Override
@@ -485,5 +538,98 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         stopRenderLoop();
+        // Cancel any pending resize to avoid leaks
+        if (mPendingResize != null) {
+            mResizeHandler.removeCallbacks(mPendingResize);
+            mPendingResize = null;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Dynamic resize (DeX drag-resize support)
+    // -----------------------------------------------------------------------
+
+    /**
+     * Debounce resize events. DeX drag-resize fires many surfaceChanged events
+     * in rapid succession. We only send the SIGWINCH / terminal resize once the
+     * user stops dragging (after RESIZE_DEBOUNCE_MS of no new events).
+     *
+     * The wgpu surface is reconfigured immediately (so rendering stays correct),
+     * but the terminal grid resize (which triggers SIGWINCH and can cause
+     * expensive reflow) is debounced.
+     */
+    private void debouncedResize(int width, int height) {
+        float cellWidth = 18.0f;
+        float cellHeight = 36.0f;
+
+        int newCols = Math.max(1, (int) (width / cellWidth));
+        int newRows = Math.max(1, (int) (height / cellHeight));
+
+        // Skip if grid dimensions haven't actually changed
+        if (newCols == mCurrentCols && newRows == mCurrentRows) {
+            return;
+        }
+
+        // Cancel any pending resize
+        if (mPendingResize != null) {
+            mResizeHandler.removeCallbacks(mPendingResize);
+        }
+
+        final int cols = newCols;
+        final int rows = newRows;
+
+        mPendingResize = () -> {
+            Log.i(TAG, "debouncedResize: applying resize to " + cols + "x" + rows
+                + " (was " + mCurrentCols + "x" + mCurrentRows + ")");
+            mCurrentCols = cols;
+            mCurrentRows = rows;
+
+            // Resize via the dedicated JNI method (sends SIGWINCH)
+            CodefactoryBridge.resizeTerminal(cols, rows);
+
+            // Update DeX input handler grid dimensions for mouse coordinate mapping
+            if (mDeXInputHandler != null) {
+                mDeXInputHandler.setGridDimensions(cols, rows);
+            }
+
+            // Notify listener if set
+            if (mResizeListener != null) {
+                mResizeListener.onTerminalResized(cols, rows);
+            }
+
+            mPendingResize = null;
+        };
+
+        mResizeHandler.postDelayed(mPendingResize, RESIZE_DEBOUNCE_MS);
+    }
+
+    /**
+     * Listener for terminal resize events (after debounce).
+     */
+    public interface ResizeListener {
+        void onTerminalResized(int cols, int rows);
+    }
+
+    private ResizeListener mResizeListener;
+
+    /**
+     * Set a listener to be notified when the terminal grid is resized.
+     */
+    public void setResizeListener(ResizeListener listener) {
+        mResizeListener = listener;
+    }
+
+    /**
+     * Get the current grid column count.
+     */
+    public int getCurrentCols() {
+        return mCurrentCols;
+    }
+
+    /**
+     * Get the current grid row count.
+     */
+    public int getCurrentRows() {
+        return mCurrentRows;
     }
 }

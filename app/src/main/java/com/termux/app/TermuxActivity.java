@@ -8,13 +8,16 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.view.ContextMenu;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
@@ -54,6 +57,8 @@ import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
 import com.termux.app.codefactory.CodefactoryBridge;
 import com.termux.app.codefactory.CodefactorySurfaceView;
+import com.termux.app.codefactory.DeXInputHandler;
+import com.termux.app.codefactory.DeXUtils;
 import com.termux.view.TerminalView;
 import com.termux.view.TerminalViewClient;
 
@@ -184,6 +189,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
     private float mTerminalToolbarDefaultHeight;
 
+    /**
+     * Whether the device is currently in Samsung DeX / desktop mode.
+     */
+    private boolean mIsDeXMode = false;
+
+    /**
+     * Input handler for keyboard shortcuts and mouse events in DeX mode.
+     * Also used whenever the GPU renderer is active (not just DeX).
+     */
+    private DeXInputHandler mDeXInputHandler;
+
 
     private static final int CONTEXT_MENU_SELECT_URL_ID = 0;
     private static final int CONTEXT_MENU_SHARE_TRANSCRIPT_ID = 1;
@@ -251,6 +267,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setTermuxTerminalViewAndClients();
 
         setCodefactorySurfaceView();
+
+        setupDeXSupport();
 
         setTerminalToolbarView(savedInstanceState);
 
@@ -908,6 +926,262 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mTerminalView.setKeepScreenOn(true);
             mPreferences.setKeepScreenOn(true);
         }
+    }
+
+
+
+    // -----------------------------------------------------------------------
+    // Samsung DeX / Desktop mode support
+    // -----------------------------------------------------------------------
+
+    /**
+     * Initialize DeX detection and input handling.
+     * Called from onCreate() after the surface views are set up.
+     */
+    private void setupDeXSupport() {
+        // Detect initial DeX state
+        mIsDeXMode = DeXUtils.isDeXMode(this);
+        DeXUtils.logDisplayState(this);
+
+        // Create the input handler (used for GPU renderer keyboard/mouse)
+        mDeXInputHandler = new DeXInputHandler();
+        mDeXInputHandler.setShortcutHandler(new DeXInputHandler.ShortcutHandler() {
+            @Override
+            public void onNewSession() {
+                if (mTermuxTerminalSessionActivityClient != null) {
+                    mTermuxTerminalSessionActivityClient.addNewSession(false, null);
+                }
+            }
+
+            @Override
+            public void onCloseSession() {
+                TerminalSession session = getCurrentSession();
+                if (session != null) {
+                    showKillSessionDialog(session);
+                }
+            }
+
+            @Override
+            public void onPaste() {
+                if (mTermuxTerminalViewClient != null) {
+                    mTermuxTerminalViewClient.doPaste();
+                }
+            }
+
+            @Override
+            public void onCopy() {
+                if (mTermuxTerminalViewClient != null) {
+                    mTermuxTerminalViewClient.shareSelectedText();
+                }
+            }
+
+            @Override
+            public void onNextSession() {
+                if (mTermuxTerminalSessionActivityClient != null) {
+                    mTermuxTerminalSessionActivityClient.switchToSession(true);
+                }
+            }
+
+            @Override
+            public void onPreviousSession() {
+                if (mTermuxTerminalSessionActivityClient != null) {
+                    mTermuxTerminalSessionActivityClient.switchToSession(false);
+                }
+            }
+
+            @Override
+            public void onSwitchToSession(int index) {
+                if (mTermuxTerminalSessionActivityClient != null) {
+                    mTermuxTerminalSessionActivityClient.switchToSession(index);
+                }
+            }
+
+            @Override
+            public void onToggleKeyboard() {
+                if (mTermuxTerminalViewClient != null) {
+                    mTermuxTerminalViewClient.onToggleSoftKeyboardRequest();
+                }
+            }
+
+            @Override
+            public void onOpenDrawer() {
+                getDrawer().openDrawer(Gravity.LEFT);
+            }
+
+            @Override
+            public void onToggleRenderer() {
+                toggleGpuRenderer();
+            }
+        });
+
+        // Wire the input handler to the GPU surface view
+        if (mCodefactorySurfaceView != null) {
+            mCodefactorySurfaceView.setDeXInputHandler(mDeXInputHandler);
+        }
+
+        // If in DeX mode, adjust UI: hide extra keys toolbar (hardware keyboard
+        // is available), log the mode for debugging
+        if (mIsDeXMode) {
+            Logger.logInfo(LOG_TAG, "DeX mode detected at startup");
+            applyDeXModeAdjustments();
+        }
+    }
+
+    /**
+     * Apply UI adjustments for DeX / desktop mode.
+     * Called when DeX mode is detected or when switching to DeX.
+     */
+    private void applyDeXModeAdjustments() {
+        Configuration config = getResources().getConfiguration();
+        boolean hwKeyboard = DeXUtils.isHardwareKeyboardConnected(config);
+
+        Logger.logInfo(LOG_TAG, "applyDeXModeAdjustments: hwKeyboard=" + hwKeyboard
+            + " screenWidthDp=" + config.screenWidthDp);
+
+        // Hide the extra keys toolbar when a hardware keyboard is connected.
+        // The toolbar is designed for touchscreen input and takes up valuable
+        // screen space in desktop mode.
+        if (hwKeyboard) {
+            ViewPager terminalToolbar = getTerminalToolbarViewPager();
+            if (terminalToolbar != null && terminalToolbar.getVisibility() == View.VISIBLE) {
+                terminalToolbar.setVisibility(View.GONE);
+                Logger.logInfo(LOG_TAG, "DeX: hiding extra keys toolbar (hardware keyboard connected)");
+            }
+        }
+    }
+
+    /**
+     * Revert UI adjustments when leaving DeX mode.
+     */
+    private void revertDeXModeAdjustments() {
+        Logger.logInfo(LOG_TAG, "revertDeXModeAdjustments: restoring phone UI");
+
+        // Restore extra keys toolbar visibility from preferences
+        if (mPreferences != null && mPreferences.shouldShowTerminalToolbar()) {
+            ViewPager terminalToolbar = getTerminalToolbarViewPager();
+            if (terminalToolbar != null) {
+                terminalToolbar.setVisibility(View.VISIBLE);
+            }
+        }
+    }
+
+    /**
+     * Handle configuration changes. The manifest declares this activity handles
+     * orientation|screenSize|smallestScreenSize|density|screenLayout|keyboard|
+     * keyboardHidden|navigation, so this method is called instead of recreating
+     * the activity.
+     *
+     * In DeX mode, this is called frequently during window drag-resize. The
+     * terminal grid resize is debounced by CodefactorySurfaceView.
+     */
+    @Override
+    public void onConfigurationChanged(@NonNull Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+
+        if (mIsInvalidState) return;
+
+        Logger.logDebug(LOG_TAG, "onConfigurationChanged: screenSize="
+            + newConfig.screenWidthDp + "x" + newConfig.screenHeightDp
+            + " keyboard=" + newConfig.keyboard
+            + " uiMode=" + Integer.toHexString(newConfig.uiMode));
+
+        // Check if DeX mode changed
+        boolean wasDeX = mIsDeXMode;
+        mIsDeXMode = DeXUtils.updateFromConfiguration(newConfig);
+
+        if (mIsDeXMode && !wasDeX) {
+            // Entered DeX mode
+            Logger.logInfo(LOG_TAG, "Entered DeX mode");
+            showToast("Desktop mode enabled", false);
+            applyDeXModeAdjustments();
+        } else if (!mIsDeXMode && wasDeX) {
+            // Left DeX mode
+            Logger.logInfo(LOG_TAG, "Left DeX mode");
+            showToast("Desktop mode disabled", false);
+            revertDeXModeAdjustments();
+        }
+
+        // Handle keyboard attachment changes (can happen independently of DeX)
+        boolean hwKeyboard = DeXUtils.isHardwareKeyboardConnected(newConfig);
+        if (mIsDeXMode && hwKeyboard) {
+            ViewPager terminalToolbar = getTerminalToolbarViewPager();
+            if (terminalToolbar != null && terminalToolbar.getVisibility() == View.VISIBLE) {
+                terminalToolbar.setVisibility(View.GONE);
+            }
+        }
+
+        DeXUtils.logDisplayState(this);
+    }
+
+    /**
+     * Intercept key events at the activity level for the GPU renderer.
+     *
+     * When the GPU renderer is active, key events need to be routed through
+     * {@link DeXInputHandler} which handles:
+     * - App-level shortcuts (Ctrl+Shift+T, etc.) intercepted before terminal
+     * - All other keys forwarded to the Rust renderer via JNI
+     *
+     * When the classic TerminalView is active, keys go through the normal
+     * Termux input pipeline (TermuxTerminalViewClient).
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (mIsInvalidState) return super.dispatchKeyEvent(event);
+
+        // Only intercept when the GPU renderer is active
+        if (mGpuRendererActive && mDeXInputHandler != null) {
+            // Let system keys through (volume, power, etc.)
+            int keyCode = event.getKeyCode();
+            if (keyCode == KeyEvent.KEYCODE_VOLUME_UP
+                || keyCode == KeyEvent.KEYCODE_VOLUME_DOWN
+                || keyCode == KeyEvent.KEYCODE_POWER
+                || keyCode == KeyEvent.KEYCODE_HOME) {
+                return super.dispatchKeyEvent(event);
+            }
+
+            // Let the DeX input handler process the key
+            if (mDeXInputHandler.handleKeyEvent(event)) {
+                return true;
+            }
+        }
+
+        return super.dispatchKeyEvent(event);
+    }
+
+    /**
+     * Handle generic motion events (mouse hover, scroll wheel) at the activity level.
+     *
+     * This catches mouse events that are not targeted at a specific view, which
+     * can happen during DeX operation. Events targeted at the CodefactorySurfaceView
+     * are handled by its own onGenericMotionEvent override.
+     */
+    @Override
+    public boolean onGenericMotionEvent(MotionEvent event) {
+        if (mIsInvalidState) return super.onGenericMotionEvent(event);
+
+        if (mGpuRendererActive && mDeXInputHandler != null) {
+            if (DeXInputHandler.isMouseInput(event)) {
+                if (mDeXInputHandler.handleGenericMotionEvent(event)) {
+                    return true;
+                }
+            }
+        }
+
+        return super.onGenericMotionEvent(event);
+    }
+
+    /**
+     * Returns true if the device is currently in Samsung DeX / desktop mode.
+     */
+    public boolean isDeXMode() {
+        return mIsDeXMode;
+    }
+
+    /**
+     * Returns the DeX input handler.
+     */
+    public DeXInputHandler getDeXInputHandler() {
+        return mDeXInputHandler;
     }
 
 

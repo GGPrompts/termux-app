@@ -53,7 +53,7 @@
         <activity
             android:name=".app.TermuxActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|smallestScreenSize|density|screenLayout|keyboard|keyboardHidden|navigation"
+            android:configChanges="orientation|screenSize|smallestScreenSize|density|screenLayout|uiMode|keyboard|keyboardHidden|navigation"
             android:label="@string/application_name"
             android:launchMode="singleTask"
             android:resizeableActivity="true"
@@ -98,7 +98,7 @@
         <activity
             android:name=".app.CodefactoryWebViewActivity"
             android:exported="false"
-            android:configChanges="orientation|screenSize|smallestScreenSize|density|screenLayout|keyboard|keyboardHidden|navigation"
+            android:configChanges="orientation|screenSize|smallestScreenSize|density|screenLayout|uiMode|keyboard|keyboardHidden|navigation"
             android:label="@string/webview_title_dashboard"
             android:theme="@style/Theme.TermuxApp.DayNight.NoActionBar" />
 
