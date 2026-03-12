@@ -174,7 +174,10 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
     @Override
     public void onSingleTapUp(MotionEvent e) {
-        TerminalEmulator term = mActivity.getCurrentSession().getEmulator();
+        TerminalSession session = mActivity.getCurrentSession();
+        if (session == null) return;
+        TerminalEmulator term = session.getEmulator();
+        if (term == null) return;
 
         if (mActivity.getProperties().shouldOpenTerminalTranscriptURLOnClick()) {
             int[] columnAndRow = mActivity.getTerminalView().getColumnAndRow(e, true);
@@ -444,6 +447,7 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
 
             if (resultingKeyCode != -1) {
                 TerminalEmulator term = session.getEmulator();
+                if (term == null) return true;
                 session.write(KeyHandler.getCode(resultingKeyCode, 0, term.isCursorKeysApplicationMode(), term.isKeypadApplicationMode()));
             } else if (resultingCodePoint != -1) {
                 session.writeCodePoint(altDown, resultingCodePoint);
@@ -472,7 +476,9 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
                                 mTermuxTerminalSessionActivityClient.switchToSession(false);
                                 return true;
                             case TermuxPropertyConstants.ACTION_SHORTCUT_RENAME_SESSION:
-                                mTermuxTerminalSessionActivityClient.renameSession(mActivity.getCurrentSession());
+                                TerminalSession renameTarget = mActivity.getCurrentSession();
+                                if (renameTarget != null)
+                                    mTermuxTerminalSessionActivityClient.renameSession(renameTarget);
                                 return true;
                         }
                     }
@@ -721,9 +727,12 @@ public class TermuxTerminalViewClient extends TermuxTerminalViewClientBase {
         if (session == null) return;
         if (!session.isRunning()) return;
 
+        TerminalEmulator emulator = session.getEmulator();
+        if (emulator == null) return;
+
         String text = ShareUtils.getTextStringFromClipboardIfSet(mActivity, true);
         if (text != null)
-            session.getEmulator().paste(text);
+            emulator.paste(text);
     }
 
 }
