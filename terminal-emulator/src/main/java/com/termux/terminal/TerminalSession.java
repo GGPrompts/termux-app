@@ -68,6 +68,17 @@ public final class TerminalSession extends TerminalOutput {
     /** Set by the application for user identification of session, not by terminal. */
     public String mSessionName;
 
+    /**
+     * When true, the PTY reader thread stops reading and waits. Used when
+     * the GPU renderer takes over reading from the same PTY fd. The reader
+     * thread checks this flag after each read() and blocks on
+     * {@link #mReaderPauseLock} until unpaused.
+     */
+    private volatile boolean mReaderPaused = false;
+
+    /** Lock object for reader thread pause/resume synchronization. */
+    private final Object mReaderPauseLock = new Object();
+
     final Handler mMainThreadHandler = new MainThreadHandler();
 
     private final String mShellPath;
@@ -136,6 +147,17 @@ public final class TerminalSession extends TerminalOutput {
                 try (InputStream termIn = new FileInputStream(terminalFileDescriptorWrapped)) {
                     final byte[] buffer = new byte[4096];
                     while (true) {
+                        // Check if the reader is paused (GPU renderer owns the fd)
+                        synchronized (mReaderPauseLock) {
+                            while (mReaderPaused) {
+                                try {
+                                    mReaderPauseLock.wait();
+                                } catch (InterruptedException e) {
+                                    return;
+                                }
+                            }
+                        }
+
                         int read = termIn.read(buffer);
                         if (read == -1) return;
                         if (!mProcessToTerminalIOQueue.write(buffer, 0, read)) return;
@@ -291,6 +313,58 @@ public final class TerminalSession extends TerminalOutput {
 
     public int getPid() {
         return mShellPid;
+    }
+
+    /**
+     * Returns the PTY master file descriptor for this session.
+     * Used by the GPU renderer to attach to the same PTY instead of
+     * spawning a new shell. The fd remains owned by this TerminalSession;
+     * callers must dup() before using it independently.
+     *
+     * @return The PTY master fd, or -1 if the session is not running.
+     */
+    public int getPtyFd() {
+        if (mShellPid > 0) {
+            return mTerminalFileDescriptor;
+        }
+        return -1;
+    }
+
+    /**
+     * Pause the PTY reader thread. After calling this, the reader thread
+     * will stop reading from the PTY fd and wait until {@link #resumeReader()}
+     * is called. This allows an external reader (the GPU renderer's Rust
+     * pipeline) to take over reading from the same PTY fd without data loss.
+     *
+     * Note: The reader may complete one more read() that was in progress
+     * when this method is called. After that read completes, the thread
+     * blocks until resumed.
+     */
+    public void pauseReader() {
+        Logger.logDebug(LOG_TAG, "pauseReader: pausing PTY reader thread");
+        synchronized (mReaderPauseLock) {
+            mReaderPaused = true;
+        }
+    }
+
+    /**
+     * Resume the PTY reader thread after it was paused by {@link #pauseReader()}.
+     * The reader thread will resume reading from the PTY fd on the next
+     * iteration of its loop.
+     */
+    public void resumeReader() {
+        Logger.logDebug(LOG_TAG, "resumeReader: resuming PTY reader thread");
+        synchronized (mReaderPauseLock) {
+            mReaderPaused = false;
+            mReaderPauseLock.notifyAll();
+        }
+    }
+
+    /**
+     * Returns true if the PTY reader thread is currently paused.
+     */
+    public boolean isReaderPaused() {
+        return mReaderPaused;
     }
 
     /** Returns the shell's working directory or null if it was unavailable. */

@@ -529,6 +529,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 Logger.logError(LOG_TAG, "GPU renderer failed, falling back to classic: " + reason);
                 if (mGpuRendererActive) {
                     mGpuRendererActive = false;
+
+                    // Resume the Java reader if we were sharing a PTY
+                    if (mCodefactorySurfaceView.isAttachedToExternalPty()) {
+                        mCodefactorySurfaceView.detachFromExternalPty();
+                        TerminalSession currentSession = getCurrentSession();
+                        if (currentSession != null) {
+                            currentSession.resumeReader();
+                        }
+                    }
+
                     mCodefactorySurfaceView.setVisibility(View.GONE);
                     mTerminalView.setVisibility(View.VISIBLE);
                     mTerminalView.requestFocus();
@@ -547,9 +557,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      * Toggle between the classic Java TerminalView and the GPU-accelerated
      * CodefactorySurfaceView. For development/testing purposes.
      *
+     * Session sharing: When switching to GPU renderer, the active TerminalSession's
+     * PTY fd is passed to the Rust pipeline. The Java reader thread is paused so
+     * only the Rust side reads from the PTY. When switching back, the Rust pipeline
+     * is detached and the Java reader resumes.
+     *
      * SAFETY: If the native library is not available, refuses to switch to GPU
      * renderer and shows a Toast explaining why. The classic Java terminal is
-     * ALWAYS the fallback.
+     * ALWAYS the fallback. If PTY sharing fails, falls back to spawning a new shell.
      */
     public void toggleGpuRenderer() {
         if (mCodefactorySurfaceView == null || mTerminalView == null) {
@@ -579,11 +594,56 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         mGpuRendererActive = !mGpuRendererActive;
 
         if (mGpuRendererActive) {
+            // --- Switching TO GPU renderer ---
+
+            // Try to share the active terminal session's PTY with the Rust pipeline
+            TerminalSession currentSession = getCurrentSession();
+            boolean sharedSession = false;
+
+            if (currentSession != null && currentSession.isRunning()) {
+                int ptyFd = currentSession.getPtyFd();
+                if (ptyFd >= 0) {
+                    Logger.logInfo(LOG_TAG, "toggleGpuRenderer: sharing PTY fd=" + ptyFd
+                        + " from session pid=" + currentSession.getPid());
+
+                    // Pause the Java reader so only Rust reads from the PTY
+                    currentSession.pauseReader();
+
+                    // Tell the SurfaceView to attach to this fd
+                    mCodefactorySurfaceView.setExternalPtyFd(ptyFd);
+                    sharedSession = true;
+                } else {
+                    Logger.logWarn(LOG_TAG, "toggleGpuRenderer: session has no valid PTY fd");
+                }
+            } else {
+                Logger.logInfo(LOG_TAG, "toggleGpuRenderer: no active session, GPU renderer will spawn its own");
+            }
+
             mTerminalView.setVisibility(View.GONE);
             mCodefactorySurfaceView.setVisibility(View.VISIBLE);
             mCodefactorySurfaceView.requestFocus();
-            showToast("GPU renderer enabled", false);
+
+            if (sharedSession) {
+                showToast("GPU renderer enabled (shared session)", false);
+            } else {
+                showToast("GPU renderer enabled", false);
+            }
         } else {
+            // --- Switching FROM GPU renderer back to classic ---
+
+            // Detach the Rust pipeline from the shared PTY (if attached)
+            if (mCodefactorySurfaceView.isAttachedToExternalPty()) {
+                mCodefactorySurfaceView.detachFromExternalPty();
+
+                // Resume the Java reader thread
+                TerminalSession currentSession = getCurrentSession();
+                if (currentSession != null) {
+                    currentSession.resumeReader();
+                    Logger.logInfo(LOG_TAG, "toggleGpuRenderer: resumed Java reader for session pid="
+                        + currentSession.getPid());
+                }
+            }
+
             mCodefactorySurfaceView.setVisibility(View.GONE);
             mTerminalView.setVisibility(View.VISIBLE);
             mTerminalView.requestFocus();

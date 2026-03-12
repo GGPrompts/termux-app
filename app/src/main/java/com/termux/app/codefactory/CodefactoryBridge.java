@@ -200,6 +200,49 @@ public class CodefactoryBridge {
         }
     }
 
+    /**
+     * Attach the GPU renderer pipeline to an existing PTY file descriptor
+     * from a TerminalSession. The fd is duplicated internally, so the
+     * Java side retains ownership. Returns true on success.
+     *
+     * @param fd   PTY master file descriptor from TerminalSession.getPtyFd()
+     * @param cols terminal width in columns
+     * @param rows terminal height in rows
+     */
+    public static boolean attachPtyFd(int fd, int cols, int rows) {
+        if (!sLibraryLoaded) {
+            Log.w(TAG, "attachPtyFd: native library not available");
+            return false;
+        }
+        try {
+            int result = nativeAttachPtyFd(fd, cols, rows);
+            return result == 0;
+        } catch (Throwable t) {
+            Log.e(TAG, "attachPtyFd: JNI call failed", t);
+            return false;
+        }
+    }
+
+    /**
+     * Detach the GPU renderer pipeline from the shared PTY.
+     * Drops the Rust pipeline's reader/writer threads and closes its
+     * duplicated fd, allowing the Java TerminalSession to resume
+     * exclusive PTY access.
+     */
+    public static boolean detachPty() {
+        if (!sLibraryLoaded) {
+            Log.w(TAG, "detachPty: native library not available");
+            return false;
+        }
+        try {
+            int result = nativeDetachPty();
+            return result == 0;
+        } catch (Throwable t) {
+            Log.e(TAG, "detachPty: JNI call failed", t);
+            return false;
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Native methods implemented in Rust (src/lib.rs)
     // -----------------------------------------------------------------------
@@ -234,4 +277,10 @@ public class CodefactoryBridge {
 
     /** Check if terminal pipeline is alive. Returns 1 if alive, 0 otherwise. */
     private static native int nativeIsAlive();
+
+    /** Attach to an existing PTY fd (from Java TerminalSession). Returns 0 on success. */
+    private static native int nativeAttachPtyFd(int fd, int cols, int rows);
+
+    /** Detach from the shared PTY. Returns 0 on success. */
+    private static native int nativeDetachPty();
 }

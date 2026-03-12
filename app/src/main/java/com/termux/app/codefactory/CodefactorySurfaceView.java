@@ -36,8 +36,14 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
     /** Whether the surface is currently valid (between surfaceCreated and surfaceDestroyed). */
     private boolean mSurfaceValid = false;
 
-    /** Whether a terminal has been spawned via nativeSpawnTerminal. */
+    /** Whether a terminal has been spawned via nativeSpawnTerminal or attached via nativeAttachPtyFd. */
     private boolean mTerminalSpawned = false;
+
+    /** Whether the pipeline is attached to an external PTY fd (shared session mode). */
+    private boolean mAttachedToExternalPty = false;
+
+    /** The fd of the external PTY we're attached to, or -1 if not attached. */
+    private int mAttachedPtyFd = -1;
 
     /** Whether the Choreographer render loop is running. */
     private boolean mRenderLoopRunning = false;
@@ -143,9 +149,15 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
                 CodefactoryBridge.surfaceChanged(holder.getSurface(), width, height);
                 mJniFailureCount = 0;
 
-                // Spawn a terminal if we haven't already and the view is visible
+                // Attach or spawn a terminal if needed and the view is visible
                 if (!mTerminalSpawned && getVisibility() == View.VISIBLE) {
-                    spawnTerminalForSurface(width, height);
+                    if (mAttachedPtyFd >= 0) {
+                        // We have an external PTY fd to attach to
+                        attachToExternalPty(width, height);
+                    } else {
+                        // No external fd -- spawn our own shell (fallback)
+                        spawnTerminalForSurface(width, height);
+                    }
                 }
 
                 // Start the render loop if not already running
@@ -301,6 +313,87 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
     // -----------------------------------------------------------------------
 
     /**
+     * Set the external PTY file descriptor to attach to when the surface
+     * becomes ready. Call this BEFORE the surface is created/shown, so
+     * that surfaceChanged() knows to attach rather than spawn.
+     *
+     * @param fd PTY master fd from TerminalSession.getPtyFd(), or -1 to clear.
+     */
+    public void setExternalPtyFd(int fd) {
+        Log.i(TAG, "setExternalPtyFd: " + fd);
+        mAttachedPtyFd = fd;
+    }
+
+    /**
+     * Attach the Rust pipeline to the external PTY fd. Called from
+     * surfaceChanged when an external fd is available.
+     */
+    private void attachToExternalPty(int width, int height) {
+        if (mAttachedPtyFd < 0) {
+            Log.w(TAG, "attachToExternalPty: no fd set, falling back to spawn");
+            spawnTerminalForSurface(width, height);
+            return;
+        }
+
+        // If pipeline is already alive and attached, skip
+        if (CodefactoryBridge.isPipelineAlive()) {
+            Log.i(TAG, "attachToExternalPty: pipeline already alive, skipping");
+            mTerminalSpawned = true;
+            mAttachedToExternalPty = true;
+            return;
+        }
+
+        float cellWidth = 18.0f;
+        float cellHeight = 36.0f;
+        int cols = Math.max(1, (int) (width / cellWidth));
+        int rows = Math.max(1, (int) (height / cellHeight));
+
+        Log.i(TAG, "attachToExternalPty: fd=" + mAttachedPtyFd
+            + " surface=" + width + "x" + height
+            + " -> grid=" + cols + "x" + rows);
+
+        boolean ok = CodefactoryBridge.attachPtyFd(mAttachedPtyFd, cols, rows);
+        if (ok) {
+            mTerminalSpawned = true;
+            mAttachedToExternalPty = true;
+            Log.i(TAG, "Attached to external PTY successfully");
+        } else {
+            Log.e(TAG, "Failed to attach to external PTY fd=" + mAttachedPtyFd
+                + ", falling back to spawn");
+            // Fallback: spawn a new independent shell
+            mAttachedPtyFd = -1;
+            spawnTerminalForSurface(width, height);
+        }
+    }
+
+    /**
+     * Detach from the external PTY. Stops the Rust pipeline's reader/writer
+     * threads and closes its duplicated fd. The Java TerminalSession resumes
+     * exclusive PTY access.
+     *
+     * Call this when toggling from GPU renderer back to the classic renderer.
+     */
+    public void detachFromExternalPty() {
+        if (!mAttachedToExternalPty) {
+            Log.i(TAG, "detachFromExternalPty: not attached, nothing to do");
+            return;
+        }
+
+        Log.i(TAG, "detachFromExternalPty: detaching pipeline");
+        CodefactoryBridge.detachPty();
+        mAttachedToExternalPty = false;
+        mTerminalSpawned = false;
+        mAttachedPtyFd = -1;
+    }
+
+    /**
+     * Returns true if the pipeline is currently attached to an external PTY.
+     */
+    public boolean isAttachedToExternalPty() {
+        return mAttachedToExternalPty;
+    }
+
+    /**
      * Spawn a terminal session for the current surface dimensions.
      * Computes grid cols/rows from pixel size and a hardcoded cell size
      * that matches the Rust renderer's font metrics (~18x36 at 32px font).
@@ -373,7 +466,11 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
                 Log.i(TAG, "View became visible");
                 if (mNativeAvailable && mSurfaceValid) {
                     if (!mTerminalSpawned) {
-                        spawnTerminalForSurface(getWidth(), getHeight());
+                        if (mAttachedPtyFd >= 0) {
+                            attachToExternalPty(getWidth(), getHeight());
+                        } else {
+                            spawnTerminalForSurface(getWidth(), getHeight());
+                        }
                     }
                     startRenderLoop();
                 }
