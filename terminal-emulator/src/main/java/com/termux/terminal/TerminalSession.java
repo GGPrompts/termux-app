@@ -341,7 +341,7 @@ public final class TerminalSession extends TerminalOutput {
      * blocks until resumed.
      */
     public void pauseReader() {
-        Logger.logDebug(LOG_TAG, "pauseReader: pausing PTY reader thread");
+        Logger.logDebug(mClient, LOG_TAG, "pauseReader: pausing PTY reader thread");
         synchronized (mReaderPauseLock) {
             mReaderPaused = true;
         }
@@ -353,7 +353,7 @@ public final class TerminalSession extends TerminalOutput {
      * iteration of its loop.
      */
     public void resumeReader() {
-        Logger.logDebug(LOG_TAG, "resumeReader: resuming PTY reader thread");
+        Logger.logDebug(mClient, LOG_TAG, "resumeReader: resuming PTY reader thread");
         synchronized (mReaderPauseLock) {
             mReaderPaused = false;
             mReaderPauseLock.notifyAll();
