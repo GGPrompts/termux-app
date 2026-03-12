@@ -56,7 +56,8 @@
                 android:layout_gravity="start"
                 android:orientation="vertical"
                 android:background="@color/pf_bg_primary"
-                android:descendantFocusability="blocksDescendants">
+                android:clickable="true"
+                android:focusable="true">
 
                 <!-- Drawer Header / Branding -->
                 <LinearLayout

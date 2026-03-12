@@ -187,9 +187,9 @@ public class BackendObserver {
      * Add a line to the in-memory ring buffer.
      */
     private synchronized void addToRingBuffer(String line) {
-        mLogRing.addLast(line);
+        mLogRing.add(line);
         while (mLogRing.size() > LOG_RING_BUFFER_SIZE) {
-            mLogRing.removeFirst();
+            mLogRing.remove(0);
         }
     }
 
@@ -227,9 +227,9 @@ public class BackendObserver {
                     LinkedList<String> tail = new LinkedList<>();
                     String line;
                     while ((line = reader.readLine()) != null) {
-                        tail.addLast(line);
+                        tail.add(line);
                         if (tail.size() > count) {
-                            tail.removeFirst();
+                            tail.remove(0);
                         }
                     }
                     lines.addAll(tail);
@@ -253,12 +253,12 @@ public class BackendObserver {
      */
     public synchronized boolean recordCrash() {
         long now = System.currentTimeMillis();
-        mCrashTimestamps.addLast(now);
+        mCrashTimestamps.add(now);
 
         // Evict timestamps outside the crash window
         while (!mCrashTimestamps.isEmpty()
-                && (now - mCrashTimestamps.getFirst()) > CRASH_WINDOW_MS) {
-            mCrashTimestamps.removeFirst();
+                && (now - mCrashTimestamps.get(0)) > CRASH_WINDOW_MS) {
+            mCrashTimestamps.remove(0);
         }
 
         if (mCrashTimestamps.size() >= MAX_CRASH_COUNT) {
@@ -293,8 +293,8 @@ public class BackendObserver {
         long now = System.currentTimeMillis();
         // Evict old timestamps before counting
         while (!mCrashTimestamps.isEmpty()
-                && (now - mCrashTimestamps.getFirst()) > CRASH_WINDOW_MS) {
-            mCrashTimestamps.removeFirst();
+                && (now - mCrashTimestamps.get(0)) > CRASH_WINDOW_MS) {
+            mCrashTimestamps.remove(0);
         }
         return mCrashTimestamps.size();
     }
