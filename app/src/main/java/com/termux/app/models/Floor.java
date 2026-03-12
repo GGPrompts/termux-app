@@ -1,5 +1,7 @@
 package com.termux.app.models;
 
+import com.termux.R;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -13,7 +15,6 @@ public class Floor {
 
     private final String id;
     private String name;
-    private String icon;
     private final List<String> sessionNames;
 
     /** Default floors that are created on first launch. */
@@ -25,15 +26,16 @@ public class Floor {
     public Floor(String name) {
         this.id = UUID.randomUUID().toString();
         this.name = name;
-        this.icon = iconForName(name);
         this.sessionNames = new ArrayList<>();
     }
 
-    public Floor(String name, String icon) {
-        this.id = UUID.randomUUID().toString();
-        this.name = name;
-        this.icon = icon;
-        this.sessionNames = new ArrayList<>();
+    /**
+     * Legacy constructor for backwards compatibility with saved prefs
+     * that stored an icon string. The icon string is now ignored;
+     * icon is determined by floor name via {@link #getIconResId()}.
+     */
+    public Floor(String name, String ignoredIcon) {
+        this(name);
     }
 
     public String getId() {
@@ -46,15 +48,6 @@ public class Floor {
 
     public void setName(String name) {
         this.name = name;
-        this.icon = iconForName(name);
-    }
-
-    public String getIcon() {
-        return icon;
-    }
-
-    public void setIcon(String icon) {
-        this.icon = icon;
     }
 
     public List<String> getSessionNames() {
@@ -75,15 +68,20 @@ public class Floor {
         return sessionNames.size();
     }
 
-    /** Returns a Unicode icon character based on the floor name. */
-    private static String iconForName(String name) {
-        if (name == null) return "\u25A0"; // filled square
+    /** Returns a drawable resource ID for this floor's icon, based on the floor name. */
+    public int getIconResId() {
+        return iconResIdForName(name);
+    }
+
+    /** Maps a floor name to a vector drawable resource ID. */
+    public static int iconResIdForName(String name) {
+        if (name == null) return R.drawable.ic_floor_default;
         switch (name) {
-            case FLOOR_BUILD:   return "\u2692"; // hammer and pick
-            case FLOOR_GIT:     return "\u2387"; // alternative key (branch-like)
-            case FLOOR_SERVER:  return "\u2301"; // electric arrow
-            case FLOOR_DEFAULT: return "\u25B6"; // right-pointing triangle
-            default:            return "\u25A0"; // filled square
+            case FLOOR_DEFAULT: return R.drawable.ic_floor_general;
+            case FLOOR_BUILD:   return R.drawable.ic_floor_build;
+            case FLOOR_GIT:     return R.drawable.ic_floor_git;
+            case FLOOR_SERVER:  return R.drawable.ic_floor_server;
+            default:            return R.drawable.ic_floor_default;
         }
     }
 }

@@ -101,7 +101,12 @@ public class FloorManager {
      * 2. The floor is "General" (default) and the session is not assigned to any other floor
      */
     public List<TermuxSession> getSessionsForFloor(Floor floor, List<TermuxSession> allSessions) {
-        if (floor == null || allSessions == null) return allSessions;
+        if (floor == null || allSessions == null) {
+            if (floor == null && allSessions != null) {
+                Logger.logWarn(LOG_TAG, "getSessionsForFloor called with null floor, returning all sessions unfiltered");
+            }
+            return allSessions;
+        }
 
         List<TermuxSession> result = new ArrayList<>();
         boolean isDefault = Floor.FLOOR_DEFAULT.equals(floor.getName());
@@ -166,8 +171,7 @@ public class FloorManager {
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject obj = arr.getJSONObject(i);
                     String name = obj.getString("name");
-                    String icon = obj.optString("icon", null);
-                    Floor floor = (icon != null) ? new Floor(name, icon) : new Floor(name);
+                    Floor floor = new Floor(name);
 
                     JSONArray sessions = obj.optJSONArray("sessions");
                     if (sessions != null) {
@@ -199,7 +203,6 @@ public class FloorManager {
             for (Floor floor : mFloors) {
                 JSONObject obj = new JSONObject();
                 obj.put("name", floor.getName());
-                obj.put("icon", floor.getIcon());
                 JSONArray sessions = new JSONArray();
                 for (String s : floor.getSessionNames()) {
                     sessions.put(s);

@@ -59,7 +59,7 @@ fn resolve_color(color: &Color, theme: &ColorTheme, default: Rgba) -> Rgba {
 }
 
 /// Map a NamedColor to Rgba. Covers ANSI 0-15, Dim 0-7, and special names.
-fn resolve_named_color(named: NamedColor, theme: &ColorTheme, default: Rgba) -> Rgba {
+fn resolve_named_color(named: NamedColor, theme: &ColorTheme, _default: Rgba) -> Rgba {
     match named {
         // Standard ANSI 0-7
         NamedColor::Black => theme.ansi[0],

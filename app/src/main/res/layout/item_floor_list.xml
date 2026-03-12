@@ -12,13 +12,12 @@
     android:layout_marginVertical="3dp">
 
     <!-- Floor icon -->
-    <com.google.android.material.textview.MaterialTextView
+    <ImageView
         android:id="@+id/floor_icon"
-        android:layout_width="28dp"
-        android:layout_height="28dp"
-        android:gravity="center"
-        android:textColor="#FF58A6FF"
-        android:textSize="16sp" />
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_gravity="center_vertical"
+        android:importantForAccessibility="no" />
 
     <!-- Floor info -->
     <LinearLayout
@@ -32,7 +31,7 @@
             android:id="@+id/floor_name"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="#FFE6EDF3"
+            android:textColor="@color/pf_text_primary"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -40,7 +39,7 @@
             android:id="@+id/floor_session_count"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="#FF8B949E"
+            android:textColor="@color/pf_text_secondary"
             android:textSize="11sp"
             android:layout_marginTop="1dp" />
 

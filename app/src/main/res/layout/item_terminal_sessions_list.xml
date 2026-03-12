@@ -16,7 +16,8 @@
         android:id="@+id/session_status_indicator"
         android:layout_width="8dp"
         android:layout_height="8dp"
-        android:background="@drawable/pf_status_running" />
+        android:background="@drawable/pf_status_running"
+        android:importantForAccessibility="no" />
 
     <!-- Session info -->
     <LinearLayout
@@ -32,7 +33,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="marquee"
             android:singleLine="true"
-            android:textColor="#FFE6EDF3"
+            android:textColor="@color/pf_text_primary"
             android:textSize="14sp"
             android:textStyle="bold" />
 
@@ -42,7 +43,7 @@
             android:layout_height="wrap_content"
             android:ellipsize="end"
             android:singleLine="true"
-            android:textColor="#FF8B949E"
+            android:textColor="@color/pf_text_secondary"
             android:textSize="11sp"
             android:layout_marginTop="1dp" />
 
@@ -54,7 +55,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="8dp"
-        android:textColor="#FF6E7681"
+        android:textColor="@color/pf_text_muted"
         android:textSize="11sp" />
 
 </LinearLayout>

@@ -1,10 +1,12 @@
 package com.termux.app.terminal;
 
 import android.annotation.SuppressLint;
+import android.content.res.ColorStateList;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.ImageView;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
@@ -45,11 +47,11 @@ public class FloorListAdapter extends ArrayAdapter<Floor> {
         Floor floor = getItem(position);
         if (floor == null) return view;
 
-        TextView iconView = view.findViewById(R.id.floor_icon);
+        ImageView iconView = view.findViewById(R.id.floor_icon);
         TextView nameView = view.findViewById(R.id.floor_name);
         TextView countView = view.findViewById(R.id.floor_session_count);
 
-        iconView.setText(floor.getIcon());
+        iconView.setImageResource(floor.getIconResId());
         nameView.setText(floor.getName());
 
         // Count sessions for this floor
@@ -71,13 +73,13 @@ public class FloorListAdapter extends ArrayAdapter<Floor> {
         boolean isCurrent = position == mFloorManager.getCurrentFloorIndex();
         view.setActivated(isCurrent);
 
-        // Tint the icon for current floor
+        // Tint the icon and name for current floor
         if (isCurrent) {
-            iconView.setTextColor(0xFF58A6FF); // pf_accent
-            nameView.setTextColor(0xFFE6EDF3); // pf_text_primary
+            iconView.setImageTintList(ColorStateList.valueOf(mActivity.getColor(R.color.pf_accent)));
+            nameView.setTextColor(mActivity.getColor(R.color.pf_text_primary));
         } else {
-            iconView.setTextColor(0xFF8B949E); // pf_text_secondary
-            nameView.setTextColor(0xFF8B949E); // pf_text_secondary
+            iconView.setImageTintList(ColorStateList.valueOf(mActivity.getColor(R.color.pf_text_secondary)));
+            nameView.setTextColor(mActivity.getColor(R.color.pf_text_secondary));
         }
 
         return view;

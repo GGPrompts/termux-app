@@ -978,11 +978,6 @@ impl Renderer {
         self.grid = grid;
     }
 
-    /// Get the current grid dimensions (cols, rows).
-    pub fn grid_size(&self) -> (usize, usize) {
-        (self.grid.cols, self.grid.rows)
-    }
-
     /// Get cell dimensions in pixels.
     pub fn cell_size(&self) -> (f32, f32) {
         (self.atlas.cell_width, self.atlas.cell_height)

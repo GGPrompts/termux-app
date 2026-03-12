@@ -17,7 +17,6 @@ mod keycode {
     pub const KEYCODE_DEL: i32 = 67; // Backspace (Android calls it DEL)
     pub const KEYCODE_TAB: i32 = 61;
     pub const KEYCODE_ESCAPE: i32 = 111;
-    pub const KEYCODE_SPACE: i32 = 62;
 
     // Arrow keys
     pub const KEYCODE_DPAD_UP: i32 = 19;

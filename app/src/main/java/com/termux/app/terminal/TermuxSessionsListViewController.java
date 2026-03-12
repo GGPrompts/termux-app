@@ -57,14 +57,14 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
 
         TermuxSession termuxSession = getItem(position);
         if (termuxSession == null) {
-            sessionTitleView.setText("null session");
+            sessionTitleView.setText("Terminal");
             if (sessionSubtitleView != null) sessionSubtitleView.setVisibility(View.GONE);
             return sessionRowView;
         }
 
         TerminalSession sessionAtRow = termuxSession.getTerminalSession();
         if (sessionAtRow == null) {
-            sessionTitleView.setText("null session");
+            sessionTitleView.setText("Terminal");
             if (sessionSubtitleView != null) sessionSubtitleView.setVisibility(View.GONE);
             return sessionRowView;
         }
@@ -119,12 +119,18 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
         // Text styling for running/stopped sessions
         if (sessionRunning) {
             sessionTitleView.setPaintFlags(sessionTitleView.getPaintFlags() & ~Paint.STRIKE_THRU_TEXT_FLAG);
-            sessionTitleView.setTextColor(0xFFE6EDF3); // pf_text_primary
+            sessionTitleView.setTextColor(mActivity.getColor(R.color.pf_text_primary));
         } else {
             sessionTitleView.setPaintFlags(sessionTitleView.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
-            int color = sessionAtRow.getExitStatus() == 0 ? 0xFF6E7681 : 0xFFF85149; // muted or danger
+            int color = sessionAtRow.getExitStatus() == 0
+                ? mActivity.getColor(R.color.pf_text_muted)
+                : mActivity.getColor(R.color.pf_danger);
             sessionTitleView.setTextColor(color);
         }
+
+        // Accessibility: set content description with session status
+        String status = sessionRunning ? "running" : (sessionAtRow.getExitStatus() == 0 ? "stopped" : "error");
+        sessionRowView.setContentDescription(sessionTitleView.getText() + ", " + status);
 
         return sessionRowView;
     }

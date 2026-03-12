@@ -55,7 +55,7 @@
                 android:layout_height="match_parent"
                 android:layout_gravity="start"
                 android:orientation="vertical"
-                android:background="#FF0D1117"
+                android:background="@color/pf_bg_primary"
                 android:descendantFocusability="blocksDescendants">
 
                 <!-- Drawer Header / Branding -->
@@ -73,7 +73,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="@string/drawer_app_name"
-                        android:textColor="#FFE6EDF3"
+                        android:textColor="@color/pf_text_primary"
                         android:textSize="18sp"
                         android:textStyle="bold"
                         android:letterSpacing="0.05" />
@@ -83,7 +83,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="2dp"
-                        android:textColor="#FF8B949E"
+                        android:textColor="@color/pf_text_secondary"
                         android:textSize="12sp" />
 
                 </LinearLayout>
@@ -93,13 +93,13 @@
                     android:layout_width="match_parent"
                     android:layout_height="1dp"
                     android:layout_marginHorizontal="16dp"
-                    android:background="#FF21262D" />
+                    android:background="@color/pf_bg_tertiary" />
 
                 <!-- Tab bar: Terminals | Floors | Settings -->
                 <LinearLayout
                     android:id="@+id/drawer_tab_bar"
                     android:layout_width="match_parent"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:orientation="horizontal"
                     android:paddingHorizontal="8dp"
                     android:paddingTop="8dp">
@@ -111,7 +111,7 @@
                         android:layout_weight="1"
                         android:gravity="center"
                         android:text="@string/drawer_tab_terminals"
-                        android:textColor="#FF58A6FF"
+                        android:textColor="@color/pf_accent"
                         android:textSize="12sp"
                         android:textStyle="bold" />
 
@@ -122,7 +122,7 @@
                         android:layout_weight="1"
                         android:gravity="center"
                         android:text="@string/drawer_tab_floors"
-                        android:textColor="#FF8B949E"
+                        android:textColor="@color/pf_text_secondary"
                         android:textSize="12sp" />
 
                     <com.google.android.material.textview.MaterialTextView
@@ -132,7 +132,7 @@
                         android:layout_weight="1"
                         android:gravity="center"
                         android:text="@string/drawer_tab_settings"
-                        android:textColor="#FF8B949E"
+                        android:textColor="@color/pf_text_secondary"
                         android:textSize="12sp" />
 
                 </LinearLayout>
@@ -188,12 +188,12 @@
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/new_session_button"
                                 android:layout_width="0dp"
-                                android:layout_height="36dp"
+                                android:layout_height="48dp"
                                 android:layout_weight="1"
                                 android:layout_marginEnd="4dp"
                                 android:background="@drawable/pf_button_primary"
                                 android:text="@string/drawer_new_session"
-                                android:textColor="#FFFFFFFF"
+                                android:textColor="@android:color/white"
                                 android:textSize="12sp"
                                 android:textAllCaps="false"
                                 android:insetTop="0dp"
@@ -203,12 +203,12 @@
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/toggle_keyboard_button"
                                 android:layout_width="0dp"
-                                android:layout_height="36dp"
+                                android:layout_height="48dp"
                                 android:layout_weight="1"
                                 android:layout_marginStart="4dp"
                                 android:background="@drawable/pf_button_secondary"
                                 android:text="@string/action_toggle_soft_keyboard"
-                                android:textColor="#FFE6EDF3"
+                                android:textColor="@color/pf_text_primary"
                                 android:textSize="12sp"
                                 android:textAllCaps="false"
                                 android:insetTop="0dp"
@@ -250,10 +250,10 @@
                             <com.google.android.material.button.MaterialButton
                                 android:id="@+id/add_floor_button"
                                 android:layout_width="match_parent"
-                                android:layout_height="36dp"
+                                android:layout_height="48dp"
                                 android:background="@drawable/pf_button_secondary"
                                 android:text="@string/drawer_add_floor"
-                                android:textColor="#FFE6EDF3"
+                                android:textColor="@color/pf_text_primary"
                                 android:textSize="12sp"
                                 android:textAllCaps="false"
                                 android:insetTop="0dp"
@@ -286,7 +286,7 @@
                                 android:layout_marginTop="8dp"
                                 android:layout_marginBottom="4dp"
                                 android:text="@string/drawer_settings_appearance"
-                                android:textColor="#FF8B949E"
+                                android:textColor="@color/pf_text_secondary"
                                 android:textSize="11sp"
                                 android:textStyle="bold"
                                 android:textAllCaps="true"
@@ -296,30 +296,36 @@
                                 android:id="@+id/settings_theme"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:gravity="center_vertical"
                                 android:background="@drawable/pf_settings_item_background"
-                                android:padding="12dp"
+                                android:paddingHorizontal="12dp"
                                 android:text="@string/drawer_settings_theme"
-                                android:textColor="#FFE6EDF3"
+                                android:textColor="@color/pf_text_primary"
                                 android:textSize="14sp" />
 
                             <com.google.android.material.textview.MaterialTextView
                                 android:id="@+id/settings_font_size"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:gravity="center_vertical"
                                 android:background="@drawable/pf_settings_item_background"
-                                android:padding="12dp"
+                                android:paddingHorizontal="12dp"
                                 android:text="@string/drawer_settings_font_size"
-                                android:textColor="#FFE6EDF3"
+                                android:textColor="@color/pf_text_primary"
                                 android:textSize="14sp" />
 
                             <com.google.android.material.textview.MaterialTextView
                                 android:id="@+id/settings_extra_keys"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:gravity="center_vertical"
                                 android:background="@drawable/pf_settings_item_background"
-                                android:padding="12dp"
+                                android:paddingHorizontal="12dp"
                                 android:text="@string/drawer_settings_extra_keys"
-                                android:textColor="#FFE6EDF3"
+                                android:textColor="@color/pf_text_primary"
                                 android:textSize="14sp" />
 
                             <!-- Divider -->
@@ -327,7 +333,7 @@
                                 android:layout_width="match_parent"
                                 android:layout_height="1dp"
                                 android:layout_marginVertical="8dp"
-                                android:background="#FF21262D" />
+                                android:background="@color/pf_bg_tertiary" />
 
                             <!-- Terminal section -->
                             <com.google.android.material.textview.MaterialTextView
@@ -336,7 +342,7 @@
                                 android:layout_marginStart="4dp"
                                 android:layout_marginBottom="4dp"
                                 android:text="@string/drawer_settings_terminal"
-                                android:textColor="#FF8B949E"
+                                android:textColor="@color/pf_text_secondary"
                                 android:textSize="11sp"
                                 android:textStyle="bold"
                                 android:textAllCaps="true"
@@ -346,20 +352,24 @@
                                 android:id="@+id/settings_keep_screen_on"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:gravity="center_vertical"
                                 android:background="@drawable/pf_settings_item_background"
-                                android:padding="12dp"
+                                android:paddingHorizontal="12dp"
                                 android:text="@string/drawer_settings_keep_screen_on"
-                                android:textColor="#FFE6EDF3"
+                                android:textColor="@color/pf_text_primary"
                                 android:textSize="14sp" />
 
                             <com.google.android.material.textview.MaterialTextView
                                 android:id="@+id/settings_toggle_toolbar"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:gravity="center_vertical"
                                 android:background="@drawable/pf_settings_item_background"
-                                android:padding="12dp"
+                                android:paddingHorizontal="12dp"
                                 android:text="@string/drawer_settings_toggle_toolbar"
-                                android:textColor="#FFE6EDF3"
+                                android:textColor="@color/pf_text_primary"
                                 android:textSize="14sp" />
 
                             <!-- Divider -->
@@ -367,7 +377,7 @@
                                 android:layout_width="match_parent"
                                 android:layout_height="1dp"
                                 android:layout_marginVertical="8dp"
-                                android:background="#FF21262D" />
+                                android:background="@color/pf_bg_tertiary" />
 
                             <!-- Advanced section -->
                             <com.google.android.material.textview.MaterialTextView
@@ -376,7 +386,7 @@
                                 android:layout_marginStart="4dp"
                                 android:layout_marginBottom="4dp"
                                 android:text="@string/drawer_settings_advanced"
-                                android:textColor="#FF8B949E"
+                                android:textColor="@color/pf_text_secondary"
                                 android:textSize="11sp"
                                 android:textStyle="bold"
                                 android:textAllCaps="true"
@@ -386,20 +396,24 @@
                                 android:id="@+id/settings_full_settings"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:gravity="center_vertical"
                                 android:background="@drawable/pf_settings_item_background"
-                                android:padding="12dp"
+                                android:paddingHorizontal="12dp"
                                 android:text="@string/drawer_settings_all_settings"
-                                android:textColor="#FFE6EDF3"
+                                android:textColor="@color/pf_text_primary"
                                 android:textSize="14sp" />
 
                             <com.google.android.material.textview.MaterialTextView
                                 android:id="@+id/settings_gpu_renderer"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:gravity="center_vertical"
                                 android:background="@drawable/pf_settings_item_background"
-                                android:padding="12dp"
+                                android:paddingHorizontal="12dp"
                                 android:text="@string/drawer_settings_gpu_renderer"
-                                android:textColor="#FFE6EDF3"
+                                android:textColor="@color/pf_text_primary"
                                 android:textSize="14sp" />
 
                         </LinearLayout>

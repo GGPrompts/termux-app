@@ -43,8 +43,6 @@ pub struct ColorTheme {
     pub bg: Rgba,
     /// Cursor color
     pub cursor: Rgba,
-    /// Selection background
-    pub selection_bg: Rgba,
 }
 
 impl Default for ColorTheme {
@@ -80,23 +78,6 @@ impl ColorTheme {
             fg: Rgba::from_rgb8(0xCD, 0xD6, 0xF4),     // text
             bg: Rgba::from_rgb8(0x1E, 0x1E, 0x2E),     // base
             cursor: Rgba::from_rgb8(0xF5, 0xE0, 0xDC),  // rosewater
-            selection_bg: Rgba::from_rgb8(0x45, 0x47, 0x5A), // surface1 with alpha
-        }
-    }
-
-    /// Resolve a terminal color to an RGBA value.
-    ///
-    /// `color` is one of:
-    /// - Named ANSI color (0-15)
-    /// - Indexed color (0-255)
-    /// - RGB true color
-    ///
-    /// This matches the alacritty_terminal color model.
-    pub fn resolve_named(&self, index: u8) -> Rgba {
-        if (index as usize) < 16 {
-            self.ansi[index as usize]
-        } else {
-            self.resolve_indexed(index)
         }
     }
 
@@ -125,8 +106,4 @@ impl ColorTheme {
         }
     }
 
-    /// Convert true color (24-bit RGB) to Rgba.
-    pub fn resolve_rgb(&self, r: u8, g: u8, b: u8) -> Rgba {
-        Rgba::from_rgb8(r, g, b)
-    }
 }

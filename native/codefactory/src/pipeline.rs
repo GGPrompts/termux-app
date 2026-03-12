@@ -187,11 +187,6 @@ pub struct TerminalPipeline {
     cols: u16,
     rows: u16,
 
-    /// Optional WebSocket output sink for remote access.
-    /// When set, raw PTY bytes are cloned and sent through this channel
-    /// in parallel with the native rendering path.
-    ws_sink: Arc<Mutex<Option<std::sync::mpsc::Sender<Vec<u8>>>>>,
-
     /// Color theme for grid conversion.
     theme: ColorTheme,
 
@@ -308,15 +303,12 @@ impl TerminalPipeline {
 
         let write_gen = Arc::new(AtomicU64::new(0));
         let alive = Arc::new(AtomicBool::new(true));
-        let ws_sink: Arc<Mutex<Option<std::sync::mpsc::Sender<Vec<u8>>>>> =
-            Arc::new(Mutex::new(None));
 
         // --- PTY reader thread ---
         // Reads bytes from PTY, feeds them through the terminal parser.
         let reader_state = Arc::clone(&state);
         let reader_gen = Arc::clone(&write_gen);
         let reader_alive = Arc::clone(&alive);
-        let reader_ws_sink = Arc::clone(&ws_sink);
 
         std::thread::Builder::new()
             .name("pty-reader".into())
@@ -339,13 +331,6 @@ impl TerminalPipeline {
                             }
                             // Bump generation counter (atomic, no lock)
                             reader_gen.fetch_add(1, Ordering::Release);
-
-                            // Forward to WebSocket sink if connected
-                            if let Ok(guard) = reader_ws_sink.lock() {
-                                if let Some(ref tx) = *guard {
-                                    let _ = tx.send(bytes.to_vec());
-                                }
-                            }
                         }
                         Err(e) => {
                             log::error!("PTY reader error: {}", e);
@@ -387,7 +372,6 @@ impl TerminalPipeline {
             attached_fd: -1,
             cols,
             rows,
-            ws_sink,
             theme: ColorTheme::default(),
             cached_grid: None,
         })
@@ -454,14 +438,11 @@ impl TerminalPipeline {
 
         let write_gen = Arc::new(AtomicU64::new(0));
         let alive = Arc::new(AtomicBool::new(true));
-        let ws_sink: Arc<Mutex<Option<std::sync::mpsc::Sender<Vec<u8>>>>> =
-            Arc::new(Mutex::new(None));
 
         // --- PTY reader thread ---
         let reader_state = Arc::clone(&state);
         let reader_gen = Arc::clone(&write_gen);
         let reader_alive = Arc::clone(&alive);
-        let reader_ws_sink = Arc::clone(&ws_sink);
 
         std::thread::Builder::new()
             .name("pty-reader-attached".into())
@@ -481,12 +462,6 @@ impl TerminalPipeline {
                                 ts.process_bytes(bytes);
                             }
                             reader_gen.fetch_add(1, Ordering::Release);
-
-                            if let Ok(guard) = reader_ws_sink.lock() {
-                                if let Some(ref tx) = *guard {
-                                    let _ = tx.send(bytes.to_vec());
-                                }
-                            }
                         }
                         Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => {
                             // EINTR -- retry
@@ -530,7 +505,6 @@ impl TerminalPipeline {
             attached_fd: our_fd,    // Our dup'd fd, for resize via ioctl
             cols,
             rows,
-            ws_sink,
             theme: ColorTheme::default(),
             cached_grid: None,
         })
@@ -686,20 +660,6 @@ impl TerminalPipeline {
         self.write_gen.fetch_add(1, Ordering::Release);
     }
 
-    /// Set a WebSocket output sink for remote access.
-    ///
-    /// When set, raw PTY bytes are cloned and sent through this channel
-    /// in parallel with the native rendering path. Set to None to disconnect.
-    pub fn set_ws_sink(&self, sink: Option<std::sync::mpsc::Sender<Vec<u8>>>) {
-        if let Ok(mut guard) = self.ws_sink.lock() {
-            *guard = sink;
-        }
-    }
-
-    /// Get the current terminal dimensions.
-    pub fn dimensions(&self) -> (u16, u16) {
-        (self.cols, self.rows)
-    }
 }
 
 impl Drop for TerminalPipeline {

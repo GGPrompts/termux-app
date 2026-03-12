@@ -64,6 +64,9 @@
     <string name="msg_delete_floor_confirm">Delete floor \"%s\"? Sessions will be moved to General.</string>
     <string name="title_assign_floor">Assign to Floor</string>
 
+    <string name="session_default_name">Terminal</string>
+    <string name="session_pid_prefix">pid %d</string>
+
     <!-- Terminal Sidebar and Shortcuts -->
     <string name="action_new_session">New session</string>
     <string name="action_new_session_failsafe">Failsafe</string>
