@@ -9,7 +9,7 @@ Custom Termux fork that serves as a standalone Android dev workstation app calle
 - `app/` -- Android app source (Java)
 - `native/codefactory/` -- Rust crate for GPU-accelerated terminal renderer (wgpu/Vulkan + alacritty_terminal), compiled to .so via JNI
 - `scripts/` -- Build, cross-compile, and deployment scripts
-- `terminal-emulator/`, `terminal-view/`, `termux-shared/` -- Termux library modules
+- `termux-shared/` -- Termux shared library (includes consolidated terminal emulator and PTY session code)
 
 ## Building
 
