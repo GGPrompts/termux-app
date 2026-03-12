@@ -30,20 +30,10 @@ JAVA_HOME=$HOME/jdk/jdk-21.0.10+7 ./gradlew assembleDebug
 bash scripts/build-codefactory-android.sh [--debug] [--no-apk] [--no-deploy]
 ```
 
-## Phone Access
-
-- Samsung Galaxy S22 Ultra, Android 12, Termux from F-Droid
-- SSH: `ssh $(tailscale status | grep samsung | awk '{print $1}') -p 8022`
-- Run `tailscale status` to see all device names and IPs
-- Stock Termux is currently installed (do NOT uninstall without asking)
-
 ## Cross-Compilation
 
-- NDK r27c: `~/Android/Sdk/android-ndk-r27c`
 - Target: `aarch64-linux-android` (bionic libc, NOT glibc)
-- Linker configured in `~/.cargo/config.toml`
 - `scripts/cross-env.sh` sets CC/CXX/AR for the `cc` crate
-- `scripts/deploy.sh` pushes binaries to phone via SSH/Tailscale
 
 ## Termux/Android Constraints
 
@@ -56,28 +46,11 @@ bash scripts/build-codefactory-android.sh [--debug] [--no-apk] [--no-deploy]
 
 Unified Rust stack: wgpu/Vulkan renderer + alacritty_terminal parser + codefactory Axum backend, loaded as a single .so via JNI. WebView only for dashboard pages (git, kanban, files), not terminals.
 
-## Sensitive Info
-
-- README contains SSH port details -- review before making repo public
-- Debug signing key (`testkey_untrusted.jks`) is in `app/`
-- `.beads/` contains database connection info -- gitignored but check before sharing
-
-## Issue Tracking
-
-Uses beads with prefix `txc`. Run `bd ready` or `mcp__beads__ready(prefix='txc')` to see actionable tasks.
-
-## Codefactory Backend (separate repo)
-
-- Repo: `~/projects/codefactory` (Rust/Axum backend + vanilla JS frontend)
-- Serves on port 3001, config at `~/.config/codefactory/profiles.json`
-- This repo does NOT contain the backend -- only the native renderer and Android shell
-
 ## Key Decisions
 
 - **Keep com.termux package name** -- branding only as "PocketForge"
 - **wgpu + alacritty_terminal** replaces both Termux's Java renderer and xterm.js WebGL
 - **GitHub Releases primary** distribution, self-hosted F-Droid secondary
-- **RSA 4096-bit signing key** with APK Signature Scheme v3 for future rotation
 
 ## Commit Message Convention
 
