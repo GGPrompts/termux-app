@@ -135,4 +135,11 @@
     <string name="log_level_unknown">*Unknown*</string>
     <string name="log_level_value">Logcat log level set to \"%1$s\"</string>
 
+
+
+    <!-- TerminalView text selection -->
+    <string name="copy_text">Copy</string>
+    <string name="paste_text">Paste</string>
+    <string name="text_selection_more">More\u2026</string>
+
 </resources>
