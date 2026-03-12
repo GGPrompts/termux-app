@@ -49,8 +49,13 @@ import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
 
+import com.termux.app.codefactory.CodefactoryBridge;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A service holding a list of {@link TermuxSession} in {@link TermuxShellManager#mTermuxSessions} and background {@link AppShell}
@@ -61,6 +66,10 @@ import java.util.List;
  * <p/>
  * In order to keep both terminal sessions and spawned processes (who may outlive the terminal sessions) alive as long
  * as wanted by the user this service is a foreground service, {@link Service#startForeground(int, Notification)}.
+ * <p/>
+ * The codefactory backend (Rust/Axum, loaded as libcodefactory.so via JNI) is initialized
+ * asynchronously on service start and shut down gracefully on service destroy. A partial wake lock
+ * is acquired automatically when the backend is running to keep long-running sessions alive.
  * <p/>
  * Optionally may hold a wake and a wifi lock, in which case that is shown in the notification - see
  * {@link #buildNotification()}.
@@ -102,8 +111,33 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     private PowerManager.WakeLock mWakeLock;
     private WifiManager.WifiLock mWifiLock;
 
+    /** Partial wake lock held while the codefactory backend is running to prevent CPU sleep
+     *  during long-running sessions (e.g. Claude Code). Separate from the user-toggled wake lock. */
+    private PowerManager.WakeLock mBackendWakeLock;
+
     /** If the user has executed the {@link TERMUX_SERVICE#ACTION_STOP_SERVICE} intent. */
     boolean mWantsToStop = false;
+
+    /** Whether the codefactory backend initialization has been started. */
+    private final AtomicBoolean mBackendInitStarted = new AtomicBoolean(false);
+
+    /** Whether the codefactory backend initialization completed (success or failure). */
+    private final AtomicBoolean mBackendInitDone = new AtomicBoolean(false);
+
+    /** Whether the codefactory backend started successfully. */
+    private volatile boolean mBackendRunning = false;
+
+    /** Error message if backend initialization failed, or null. */
+    private volatile String mBackendError = null;
+
+    /** Latch that is counted down when backend init completes. Activities can wait on this. */
+    private final CountDownLatch mBackendReadyLatch = new CountDownLatch(1);
+
+    /** Codefactory backend port. */
+    private static final int CODEFACTORY_PORT = 3001;
+
+    /** Notification title for PocketForge branding. */
+    private static final String NOTIFICATION_TITLE = "PocketForge";
 
     private static final String LOG_TAG = "TermuxService";
 
@@ -120,6 +154,11 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         runStartForeground();
 
         SystemEventReceiver.registerPackageUpdateEvents(this);
+
+        // Start the codefactory backend asynchronously to avoid ANR.
+        // The .so is loaded and the Axum server is started on a background thread.
+        // The foreground notification is updated when init completes.
+        startCodefactoryBackendAsync();
     }
 
     @SuppressLint("Wakelock")
@@ -168,6 +207,10 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     @Override
     public void onDestroy() {
         Logger.logVerbose(LOG_TAG, "onDestroy");
+
+        // Stop the codefactory backend gracefully before killing sessions.
+        // This allows the Rust side to clean up PTY sessions and flush state.
+        stopCodefactoryBackend();
 
         TermuxShellUtils.clearTermuxTMPDIR(true);
 
@@ -221,6 +264,7 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     /** Process action to stop service. */
     private void actionStopService() {
         mWantsToStop = true;
+        stopCodefactoryBackend();
         killAllTermuxExecutionCommands();
         requestStopService();
     }
@@ -787,16 +831,34 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         PendingIntent contentIntent = PendingIntent.getActivity(this, 0, notificationIntent, 0);
 
 
-        // Set notification text
+        // Set notification text with backend status
         int sessionCount = getTermuxSessionsSize();
         int taskCount = mShellManager.mTermuxTasks.size();
-        String notificationText = sessionCount + " session" + (sessionCount == 1 ? "" : "s");
-        if (taskCount > 0) {
-            notificationText += ", " + taskCount + " task" + (taskCount == 1 ? "" : "s");
+
+        StringBuilder sb = new StringBuilder();
+
+        // Backend status comes first
+        if (mBackendRunning) {
+            sb.append("Backend running");
+        } else if (mBackendInitStarted.get() && !mBackendInitDone.get()) {
+            sb.append("Backend starting...");
+        } else if (mBackendError != null) {
+            sb.append("Backend error");
+        }
+
+        // Session/task counts
+        if (sessionCount > 0 || taskCount > 0) {
+            if (sb.length() > 0) sb.append(" | ");
+            sb.append(sessionCount).append(" session").append(sessionCount == 1 ? "" : "s");
+            if (taskCount > 0) {
+                sb.append(", ").append(taskCount).append(" task").append(taskCount == 1 ? "" : "s");
+            }
         }
 
         final boolean wakeLockHeld = mWakeLock != null;
-        if (wakeLockHeld) notificationText += " (wake lock held)";
+        if (wakeLockHeld) sb.append(" (wake lock held)");
+
+        String notificationText = sb.length() > 0 ? sb.toString() : "Running";
 
 
         // Set notification priority
@@ -805,10 +867,10 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         int priority = (wakeLockHeld) ? Notification.PRIORITY_HIGH : Notification.PRIORITY_LOW;
 
 
-        // Build the notification
+        // Build the notification -- use "PocketForge" as the title instead of "Termux"
         Notification.Builder builder =  NotificationUtils.geNotificationBuilder(this,
             TermuxConstants.TERMUX_APP_NOTIFICATION_CHANNEL_ID, priority,
-            TermuxConstants.TERMUX_APP_NAME, notificationText, null,
+            NOTIFICATION_TITLE, notificationText, null,
             contentIntent, null, NotificationUtils.NOTIFICATION_MODE_SILENT);
         if (builder == null)  return null;
 
@@ -845,13 +907,14 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
 
         NotificationUtils.setupNotificationChannel(this, TermuxConstants.TERMUX_APP_NOTIFICATION_CHANNEL_ID,
-            TermuxConstants.TERMUX_APP_NOTIFICATION_CHANNEL_NAME, NotificationManager.IMPORTANCE_LOW);
+            NOTIFICATION_TITLE, NotificationManager.IMPORTANCE_LOW);
     }
 
     /** Update the shown foreground service notification after making any changes that affect it. */
     private synchronized void updateNotification() {
-        if (mWakeLock == null && mShellManager.mTermuxSessions.isEmpty() && mShellManager.mTermuxTasks.isEmpty()) {
-            // Exit if we are updating after the user disabled all locks with no sessions or tasks running.
+        if (mWakeLock == null && mShellManager.mTermuxSessions.isEmpty() && mShellManager.mTermuxTasks.isEmpty() && !mBackendRunning) {
+            // Exit if we are updating after the user disabled all locks with no sessions or tasks running
+            // and the backend is not running.
             requestStopService();
         } else {
             ((NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE)).notify(TermuxConstants.TERMUX_APP_NOTIFICATION_ID, buildNotification());
@@ -954,6 +1017,185 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
     public boolean wantsToStop() {
         return mWantsToStop;
+    }
+
+
+
+    // -----------------------------------------------------------------------
+    // Codefactory backend lifecycle
+    // -----------------------------------------------------------------------
+
+    /**
+     * Start the codefactory backend on a background thread to avoid ANR.
+     * The .so is loaded (if not already), then the Axum server is started.
+     * A partial wake lock is acquired to keep the CPU awake for long-running sessions.
+     * The foreground notification is updated when initialization completes.
+     */
+    @SuppressLint("WakelockTimeout")
+    private void startCodefactoryBackendAsync() {
+        if (!mBackendInitStarted.compareAndSet(false, true)) {
+            Logger.logDebug(LOG_TAG, "Backend init already started, skipping");
+            return;
+        }
+
+        Logger.logInfo(LOG_TAG, "Starting codefactory backend initialization on background thread");
+
+        Thread initThread = new Thread(() -> {
+            try {
+                // Step 1: Load the native library (this calls System.loadLibrary + nativeInit)
+                boolean loaded = CodefactoryBridge.loadLibrary();
+                if (!loaded) {
+                    String error = CodefactoryBridge.getLoadError();
+                    mBackendError = error != null ? error : "Failed to load native library";
+                    Logger.logError(LOG_TAG, "Backend init failed: " + mBackendError);
+                    mBackendInitDone.set(true);
+                    mBackendReadyLatch.countDown();
+                    mHandler.post(this::updateNotification);
+                    return;
+                }
+
+                // Step 2: Determine the home directory for config/logs
+                String homePath = TermuxConstants.TERMUX_HOME_DIR_PATH;
+
+                // Step 3: Start the Axum backend server
+                boolean started = CodefactoryBridge.startBackend(homePath, CODEFACTORY_PORT);
+                if (!started) {
+                    mBackendError = "Failed to start backend on port " + CODEFACTORY_PORT;
+                    Logger.logError(LOG_TAG, "Backend init failed: " + mBackendError);
+                    mBackendInitDone.set(true);
+                    mBackendReadyLatch.countDown();
+                    mHandler.post(this::updateNotification);
+                    return;
+                }
+
+                // Step 4: Wait briefly for the backend to become ready (up to 5 seconds)
+                boolean ready = false;
+                for (int i = 0; i < 50; i++) {
+                    if (CodefactoryBridge.isBackendReady()) {
+                        ready = true;
+                        break;
+                    }
+                    Thread.sleep(100);
+                }
+
+                if (!ready) {
+                    // Backend started but not ready within timeout -- this is a warning,
+                    // not a hard failure. It may still become ready.
+                    Logger.logWarn(LOG_TAG, "Backend started but not ready within 5s, continuing anyway");
+                }
+
+                mBackendRunning = true;
+                mBackendInitDone.set(true);
+                mBackendReadyLatch.countDown();
+
+                Logger.logInfo(LOG_TAG, "Codefactory backend initialized successfully"
+                    + (ready ? " (ready)" : " (started, waiting for ready)"));
+
+                // Step 5: Acquire a partial wake lock to keep the CPU running
+                // for long-running sessions (e.g., Claude Code). This is separate
+                // from the user-toggled wake lock.
+                mHandler.post(() -> {
+                    acquireBackendWakeLock();
+                    updateNotification();
+                });
+
+            } catch (InterruptedException e) {
+                mBackendError = "Backend init interrupted";
+                Logger.logError(LOG_TAG, "Backend init interrupted");
+                Thread.currentThread().interrupt();
+                mBackendInitDone.set(true);
+                mBackendReadyLatch.countDown();
+                mHandler.post(this::updateNotification);
+            } catch (Throwable t) {
+                mBackendError = "Backend init exception: " + t.getMessage();
+                Logger.logStackTraceWithMessage(LOG_TAG, "Backend init failed", t);
+                mBackendInitDone.set(true);
+                mBackendReadyLatch.countDown();
+                mHandler.post(this::updateNotification);
+            }
+        }, "codefactory-init");
+
+        initThread.setDaemon(true);
+        initThread.start();
+    }
+
+    /**
+     * Stop the codefactory backend gracefully.
+     * Releases the backend wake lock and calls the native shutdown.
+     */
+    private void stopCodefactoryBackend() {
+        if (!mBackendRunning) {
+            Logger.logDebug(LOG_TAG, "Backend not running, nothing to stop");
+            return;
+        }
+
+        Logger.logInfo(LOG_TAG, "Stopping codefactory backend");
+        releaseBackendWakeLock();
+
+        try {
+            CodefactoryBridge.stopBackend();
+        } catch (Throwable t) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "Error stopping backend", t);
+        }
+
+        mBackendRunning = false;
+        Logger.logInfo(LOG_TAG, "Codefactory backend stopped");
+    }
+
+    /**
+     * Acquire a partial wake lock for the codefactory backend.
+     * This keeps the CPU running even when the screen is off, which is necessary
+     * for long-running CLI sessions (Claude Code, builds, etc.).
+     */
+    @SuppressLint("WakelockTimeout")
+    private void acquireBackendWakeLock() {
+        if (mBackendWakeLock != null) return;
+
+        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        mBackendWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
+            "pocketforge:backend-wakelock");
+        mBackendWakeLock.acquire();
+        Logger.logDebug(LOG_TAG, "Backend wake lock acquired");
+    }
+
+    /**
+     * Release the backend partial wake lock.
+     */
+    private void releaseBackendWakeLock() {
+        if (mBackendWakeLock == null) return;
+
+        mBackendWakeLock.release();
+        mBackendWakeLock = null;
+        Logger.logDebug(LOG_TAG, "Backend wake lock released");
+    }
+
+    /**
+     * Returns whether the codefactory backend is currently running.
+     */
+    public boolean isBackendRunning() {
+        return mBackendRunning;
+    }
+
+    /**
+     * Returns the backend initialization error, or null if no error.
+     */
+    public String getBackendError() {
+        return mBackendError;
+    }
+
+    /**
+     * Wait for the backend to finish initialization (success or failure).
+     * Returns true if the backend is running, false if it failed or timed out.
+     *
+     * @param timeoutMs Maximum time to wait in milliseconds
+     */
+    public boolean waitForBackendReady(long timeoutMs) {
+        try {
+            mBackendReadyLatch.await(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+        return mBackendRunning;
     }
 
 }

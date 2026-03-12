@@ -244,6 +244,89 @@ public class CodefactoryBridge {
     }
 
     // -----------------------------------------------------------------------
+    // Backend lifecycle (Axum server within the .so)
+    // -----------------------------------------------------------------------
+
+    /** Whether the backend (Axum server) has been started. */
+    private static volatile boolean sBackendStarted = false;
+
+    /**
+     * Start the codefactory backend (Axum HTTP server) within the .so.
+     * This spawns a Tokio runtime on a background thread inside Rust.
+     * Safe to call multiple times -- only starts once.
+     *
+     * @param homePath  The Termux home directory (for config, logs, sockets)
+     * @param port      The port to bind on (typically 3001)
+     * @return true if the backend started (or was already running), false on error
+     */
+    public static boolean startBackend(String homePath, int port) {
+        if (!sLibraryLoaded) {
+            Log.w(TAG, "startBackend: native library not available");
+            return false;
+        }
+        if (sBackendStarted) {
+            Log.i(TAG, "startBackend: already running");
+            return true;
+        }
+        try {
+            int result = nativeStartBackend(homePath, port);
+            if (result == 0) {
+                sBackendStarted = true;
+                Log.i(TAG, "Backend started successfully on port " + port);
+                return true;
+            } else {
+                Log.e(TAG, "nativeStartBackend returned error code: " + result);
+                return false;
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "startBackend: JNI call failed", t);
+            return false;
+        }
+    }
+
+    /**
+     * Stop the codefactory backend gracefully. Shuts down the Axum server
+     * and cleans up PTY sessions managed by the Rust side.
+     */
+    public static void stopBackend() {
+        if (!sLibraryLoaded || !sBackendStarted) {
+            Log.i(TAG, "stopBackend: nothing to stop");
+            return;
+        }
+        try {
+            nativeStopBackend();
+            sBackendStarted = false;
+            Log.i(TAG, "Backend stopped");
+        } catch (Throwable t) {
+            Log.e(TAG, "stopBackend: JNI call failed", t);
+            sBackendStarted = false; // Mark stopped even on failure
+        }
+    }
+
+    /**
+     * Check if the backend is ready to accept HTTP requests.
+     * This is a lightweight check that queries the Rust side.
+     *
+     * @return true if the backend is initialized and listening
+     */
+    public static boolean isBackendReady() {
+        if (!sLibraryLoaded || !sBackendStarted) return false;
+        try {
+            return nativeIsBackendReady() == 1;
+        } catch (Throwable t) {
+            Log.e(TAG, "isBackendReady: JNI call failed", t);
+            return false;
+        }
+    }
+
+    /**
+     * Returns true if the backend has been started (may still be initializing).
+     */
+    public static boolean isBackendStarted() {
+        return sBackendStarted;
+    }
+
+    // -----------------------------------------------------------------------
     // Native methods implemented in Rust (src/lib.rs)
     // -----------------------------------------------------------------------
     // These are private -- callers should use the safe wrappers above.
@@ -283,4 +366,13 @@ public class CodefactoryBridge {
 
     /** Detach from the shared PTY. Returns 0 on success. */
     private static native int nativeDetachPty();
+
+    /** Start the Axum backend server. Returns 0 on success. */
+    private static native int nativeStartBackend(String homePath, int port);
+
+    /** Stop the Axum backend server gracefully. */
+    private static native void nativeStopBackend();
+
+    /** Check if the backend is ready. Returns 1 if ready, 0 otherwise. */
+    private static native int nativeIsBackendReady();
 }
