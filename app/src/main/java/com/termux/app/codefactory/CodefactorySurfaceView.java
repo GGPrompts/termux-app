@@ -98,6 +98,13 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
     public interface FallbackListener {
         /** Called on the main thread when the GPU renderer has failed too many times. */
         void onGpuRendererFailed(String reason);
+
+        /**
+         * Called on the main thread when PTY attach fails. The activity should
+         * resume the Java reader thread that was paused in preparation for the
+         * attach, so the classic terminal continues working.
+         */
+        void onPtyAttachFailed(int fd, String reason);
     }
 
     private FallbackListener mFallbackListener;
@@ -411,11 +418,23 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
             mAttachedToExternalPty = true;
             Log.i(TAG, "Attached to external PTY successfully");
         } else {
-            Log.e(TAG, "Failed to attach to external PTY fd=" + mAttachedPtyFd
+            int failedFd = mAttachedPtyFd;
+            Log.e(TAG, "Failed to attach to external PTY fd=" + failedFd
                 + ", falling back to spawn");
             // Fallback: spawn a new independent shell
             mAttachedPtyFd = -1;
             spawnTerminalForSurface(width, height);
+
+            // Notify the activity so it can resume the Java reader that was
+            // paused in preparation for this attach
+            if (mFallbackListener != null) {
+                post(() -> {
+                    if (mFallbackListener != null) {
+                        mFallbackListener.onPtyAttachFailed(failedFd,
+                            "attachPtyFd returned false for fd=" + failedFd);
+                    }
+                });
+            }
         }
     }
 

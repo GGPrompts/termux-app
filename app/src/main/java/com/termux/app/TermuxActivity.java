@@ -546,26 +546,33 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             mCodefactorySurfaceView.setVisibility(View.GONE);
             mGpuRendererActive = false;
 
-            // Register fallback listener: if the GPU renderer crashes, switch back
-            // to the classic terminal automatically
-            mCodefactorySurfaceView.setFallbackListener(reason -> {
-                Logger.logError(LOG_TAG, "GPU renderer failed, falling back to classic: " + reason);
-                if (mGpuRendererActive) {
-                    mGpuRendererActive = false;
+            // Register fallback listener: if the GPU renderer crashes or PTY attach
+            // fails, ensure the Java reader is resumed and classic terminal restored
+            mCodefactorySurfaceView.setFallbackListener(new CodefactorySurfaceView.FallbackListener() {
+                @Override
+                public void onGpuRendererFailed(String reason) {
+                    Logger.logError(LOG_TAG, "GPU renderer failed, falling back to classic: " + reason);
+                    if (mGpuRendererActive) {
+                        mGpuRendererActive = false;
 
-                    // Resume the Java reader if we were sharing a PTY
-                    if (mCodefactorySurfaceView.isAttachedToExternalPty()) {
-                        mCodefactorySurfaceView.detachFromExternalPty();
-                        TerminalSession currentSession = getCurrentSession();
-                        if (currentSession != null) {
-                            currentSession.resumeReader();
+                        // Resume the Java reader if we were sharing a PTY
+                        if (mCodefactorySurfaceView.isAttachedToExternalPty()) {
+                            mCodefactorySurfaceView.detachFromExternalPty();
                         }
-                    }
+                        resumeJavaReaderIfPaused("onGpuRendererFailed");
 
-                    mCodefactorySurfaceView.setVisibility(View.GONE);
-                    mTerminalView.setVisibility(View.VISIBLE);
-                    mTerminalView.requestFocus();
-                    showToast("GPU renderer crashed, switched to classic terminal", true);
+                        mCodefactorySurfaceView.setVisibility(View.GONE);
+                        mTerminalView.setVisibility(View.VISIBLE);
+                        mTerminalView.requestFocus();
+                        showToast("GPU renderer crashed, switched to classic terminal", true);
+                    }
+                }
+
+                @Override
+                public void onPtyAttachFailed(int fd, String reason) {
+                    Logger.logError(LOG_TAG, "PTY attach failed (fd=" + fd + "): " + reason
+                        + " -- resuming Java reader");
+                    resumeJavaReaderIfPaused("onPtyAttachFailed");
                 }
             });
 
@@ -627,9 +634,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 int ptyFd = currentSession.getPtyFd();
                 if (ptyFd >= 0) {
                     Logger.logInfo(LOG_TAG, "toggleGpuRenderer: sharing PTY fd=" + ptyFd
-                        + " from session pid=" + currentSession.getPid());
+                        + " from session pid=" + currentSession.getPid()
+                        + ", pausing Java reader");
 
-                    // Pause the Java reader so only Rust reads from the PTY
+                    // Pause the Java reader so only Rust reads from the PTY.
+                    // The reader will be resumed by:
+                    // - onPtyAttachFailed() if the Rust pipeline fails to attach
+                    // - toggleGpuRenderer() when switching back to classic
+                    // - onGpuRendererFailed() if the GPU renderer crashes
                     currentSession.pauseReader();
 
                     // Tell the SurfaceView to attach to this fd
@@ -657,15 +669,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             // Detach the Rust pipeline from the shared PTY (if attached)
             if (mCodefactorySurfaceView.isAttachedToExternalPty()) {
                 mCodefactorySurfaceView.detachFromExternalPty();
-
-                // Resume the Java reader thread
-                TerminalSession currentSession = getCurrentSession();
-                if (currentSession != null) {
-                    currentSession.resumeReader();
-                    Logger.logInfo(LOG_TAG, "toggleGpuRenderer: resumed Java reader for session pid="
-                        + currentSession.getPid());
-                }
             }
+
+            // Always resume the Java reader if it is paused. This covers both the
+            // normal detach path AND the case where PTY attach failed (the attach
+            // failure clears isAttachedToExternalPty but the reader stays paused).
+            resumeJavaReaderIfPaused("toggleGpuRenderer(deactivate)");
 
             mCodefactorySurfaceView.setVisibility(View.GONE);
             mTerminalView.setVisibility(View.VISIBLE);
@@ -681,6 +690,27 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
      */
     public boolean isGpuRendererActive() {
         return mGpuRendererActive;
+    }
+
+    /**
+     * Resume the Java reader thread for the current session if it is paused.
+     * This is a safety net to ensure the reader is never left permanently paused
+     * when GPU activation or PTY attach fails.
+     *
+     * @param caller Description of the caller for logging (e.g. "onPtyAttachFailed")
+     */
+    private void resumeJavaReaderIfPaused(String caller) {
+        TerminalSession currentSession = getCurrentSession();
+        if (currentSession != null && currentSession.isReaderPaused()) {
+            currentSession.resumeReader();
+            Logger.logInfo(LOG_TAG, caller + ": resumed Java reader for session pid="
+                + currentSession.getPid());
+        } else if (currentSession != null) {
+            Logger.logDebug(LOG_TAG, caller + ": Java reader already running for session pid="
+                + currentSession.getPid() + ", no resume needed");
+        } else {
+            Logger.logWarn(LOG_TAG, caller + ": no current session to resume reader for");
+        }
     }
 
     private void setTermuxSessionsListView() {
