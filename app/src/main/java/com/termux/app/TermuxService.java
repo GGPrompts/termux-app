@@ -49,6 +49,7 @@ import com.termux.terminal.TerminalEmulator;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
 
+import com.termux.app.codefactory.BackendObserver;
 import com.termux.app.codefactory.CodefactoryBridge;
 
 import java.util.ArrayList;
@@ -130,8 +131,18 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     /** Error message if backend initialization failed, or null. */
     private volatile String mBackendError = null;
 
-    /** Latch that is counted down when backend init completes. Activities can wait on this. */
-    private final CountDownLatch mBackendReadyLatch = new CountDownLatch(1);
+    /**
+     * Whether the backend has permanently failed (crash loop or unrecoverable error).
+     * Accessible from activities to show error UI.
+     */
+    private volatile boolean mBackendFailed = false;
+
+    /** Latch that is counted down when backend init completes. Activities can wait on this.
+     *  Re-created on retry to allow fresh waits. */
+    private volatile CountDownLatch mBackendReadyLatch = new CountDownLatch(1);
+
+    /** Observability layer: logging, crash detection, stale cleanup. */
+    private BackendObserver mBackendObserver;
 
     /** Codefactory backend port. */
     private static final int CODEFACTORY_PORT = 3001;
@@ -154,6 +165,13 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         runStartForeground();
 
         SystemEventReceiver.registerPackageUpdateEvents(this);
+
+        // Initialize the backend observer for logging, crash detection, and stale cleanup.
+        String homePath = TermuxConstants.TERMUX_HOME_DIR_PATH;
+        mBackendObserver = new BackendObserver(homePath);
+
+        // Clean up any stale PID files or sockets from a previous crash before starting.
+        mBackendObserver.cleanupStaleState();
 
         // Start the codefactory backend asynchronously to avoid ANR.
         // The .so is loaded and the Axum server is started on a background thread.
@@ -211,6 +229,11 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         // Stop the codefactory backend gracefully before killing sessions.
         // This allows the Rust side to clean up PTY sessions and flush state.
         stopCodefactoryBackend();
+
+        // Shut down the backend observer (closes log file writer).
+        if (mBackendObserver != null) {
+            mBackendObserver.shutdown();
+        }
 
         TermuxShellUtils.clearTermuxTMPDIR(true);
 
@@ -838,7 +861,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         StringBuilder sb = new StringBuilder();
 
         // Backend status comes first
-        if (mBackendRunning) {
+        if (mBackendFailed) {
+            sb.append("Backend failed (crash loop)");
+        } else if (mBackendRunning) {
             sb.append("Backend running");
         } else if (mBackendInitStarted.get() && !mBackendInitDone.get()) {
             sb.append("Backend starting...");
@@ -1030,6 +1055,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
      * The .so is loaded (if not already), then the Axum server is started.
      * A partial wake lock is acquired to keep the CPU awake for long-running sessions.
      * The foreground notification is updated when initialization completes.
+     *
+     * If the backend dies, it will be restarted automatically unless a crash loop
+     * is detected (3+ crashes within 60 seconds).
      */
     @SuppressLint("WakelockTimeout")
     private void startCodefactoryBackendAsync() {
@@ -1038,7 +1066,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
             return;
         }
 
-        Logger.logInfo(LOG_TAG, "Starting codefactory backend initialization on background thread");
+        if (mBackendObserver != null) {
+            mBackendObserver.logInfo("Starting codefactory backend initialization");
+        }
 
         Thread initThread = new Thread(() -> {
             try {
@@ -1047,10 +1077,11 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
                 if (!loaded) {
                     String error = CodefactoryBridge.getLoadError();
                     mBackendError = error != null ? error : "Failed to load native library";
-                    Logger.logError(LOG_TAG, "Backend init failed: " + mBackendError);
-                    mBackendInitDone.set(true);
-                    mBackendReadyLatch.countDown();
-                    mHandler.post(this::updateNotification);
+                    if (mBackendObserver != null) {
+                        mBackendObserver.logError("Backend init failed: " + mBackendError);
+                        mBackendObserver.recordCrash();
+                    }
+                    handleBackendInitFailure();
                     return;
                 }
 
@@ -1058,13 +1089,21 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
                 String homePath = TermuxConstants.TERMUX_HOME_DIR_PATH;
 
                 // Step 3: Start the Axum backend server
+                if (mBackendObserver != null) {
+                    mBackendObserver.logInfo("Starting Axum backend on port " + CODEFACTORY_PORT);
+                }
                 boolean started = CodefactoryBridge.startBackend(homePath, CODEFACTORY_PORT);
                 if (!started) {
                     mBackendError = "Failed to start backend on port " + CODEFACTORY_PORT;
-                    Logger.logError(LOG_TAG, "Backend init failed: " + mBackendError);
-                    mBackendInitDone.set(true);
-                    mBackendReadyLatch.countDown();
-                    mHandler.post(this::updateNotification);
+                    if (mBackendObserver != null) {
+                        mBackendObserver.logError("Backend init failed: " + mBackendError);
+                        boolean crashLoop = mBackendObserver.recordCrash();
+                        if (crashLoop) {
+                            mBackendFailed = true;
+                            mBackendObserver.logError("Backend marked as permanently failed (crash loop)");
+                        }
+                    }
+                    handleBackendInitFailure();
                     return;
                 }
 
@@ -1081,15 +1120,22 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
                 if (!ready) {
                     // Backend started but not ready within timeout -- this is a warning,
                     // not a hard failure. It may still become ready.
-                    Logger.logWarn(LOG_TAG, "Backend started but not ready within 5s, continuing anyway");
+                    if (mBackendObserver != null) {
+                        mBackendObserver.logWarn("Backend started but not ready within 5s, continuing anyway");
+                    }
                 }
 
                 mBackendRunning = true;
+                mBackendFailed = false;
                 mBackendInitDone.set(true);
                 mBackendReadyLatch.countDown();
 
-                Logger.logInfo(LOG_TAG, "Codefactory backend initialized successfully"
-                    + (ready ? " (ready)" : " (started, waiting for ready)"));
+                String statusMsg = "Codefactory backend initialized successfully"
+                    + (ready ? " (ready)" : " (started, waiting for ready)");
+                if (mBackendObserver != null) {
+                    mBackendObserver.logInfo(statusMsg);
+                }
+                Logger.logInfo(LOG_TAG, statusMsg);
 
                 // Step 5: Acquire a partial wake lock to keep the CPU running
                 // for long-running sessions (e.g., Claude Code). This is separate
@@ -1101,17 +1147,22 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
             } catch (InterruptedException e) {
                 mBackendError = "Backend init interrupted";
-                Logger.logError(LOG_TAG, "Backend init interrupted");
+                if (mBackendObserver != null) {
+                    mBackendObserver.logError("Backend init interrupted");
+                }
                 Thread.currentThread().interrupt();
-                mBackendInitDone.set(true);
-                mBackendReadyLatch.countDown();
-                mHandler.post(this::updateNotification);
+                handleBackendInitFailure();
             } catch (Throwable t) {
                 mBackendError = "Backend init exception: " + t.getMessage();
+                if (mBackendObserver != null) {
+                    mBackendObserver.logError("Backend init failed", t);
+                    boolean crashLoop = mBackendObserver.recordCrash();
+                    if (crashLoop) {
+                        mBackendFailed = true;
+                    }
+                }
                 Logger.logStackTraceWithMessage(LOG_TAG, "Backend init failed", t);
-                mBackendInitDone.set(true);
-                mBackendReadyLatch.countDown();
-                mHandler.post(this::updateNotification);
+                handleBackendInitFailure();
             }
         }, "codefactory-init");
 
@@ -1120,26 +1171,70 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     }
 
     /**
+     * Handle a backend initialization failure. Signals the latch and updates
+     * the notification on the main thread.
+     */
+    private void handleBackendInitFailure() {
+        mBackendInitDone.set(true);
+        mBackendReadyLatch.countDown();
+        mHandler.post(this::updateNotification);
+    }
+
+    /**
      * Stop the codefactory backend gracefully.
      * Releases the backend wake lock and calls the native shutdown.
      */
     private void stopCodefactoryBackend() {
         if (!mBackendRunning) {
-            Logger.logDebug(LOG_TAG, "Backend not running, nothing to stop");
+            if (mBackendObserver != null) {
+                mBackendObserver.logDebug("Backend not running, nothing to stop");
+            }
             return;
         }
 
-        Logger.logInfo(LOG_TAG, "Stopping codefactory backend");
+        if (mBackendObserver != null) {
+            mBackendObserver.logInfo("Stopping codefactory backend");
+        }
         releaseBackendWakeLock();
 
         try {
             CodefactoryBridge.stopBackend();
         } catch (Throwable t) {
+            if (mBackendObserver != null) {
+                mBackendObserver.logError("Error stopping backend", t);
+            }
             Logger.logStackTraceWithMessage(LOG_TAG, "Error stopping backend", t);
         }
 
         mBackendRunning = false;
-        Logger.logInfo(LOG_TAG, "Codefactory backend stopped");
+        if (mBackendObserver != null) {
+            mBackendObserver.logInfo("Codefactory backend stopped");
+        }
+    }
+
+    /**
+     * Retry starting the backend after a failure. Called from the error UI.
+     * Resets crash-loop detection so the user can force a retry.
+     */
+    public void retryBackendStart() {
+        if (mBackendObserver != null) {
+            mBackendObserver.resetCrashLoop();
+            mBackendObserver.cleanupStaleState();
+        }
+
+        // Reset state so startCodefactoryBackendAsync can run again.
+        mBackendFailed = false;
+        mBackendError = null;
+        mBackendRunning = false;
+        mBackendInitStarted.set(false);
+        mBackendInitDone.set(false);
+        mBackendReadyLatch = new CountDownLatch(1);
+
+        if (mBackendObserver != null) {
+            mBackendObserver.logInfo("User-initiated backend retry");
+        }
+
+        startCodefactoryBackendAsync();
     }
 
     /**
@@ -1155,7 +1250,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
         mBackendWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,
             "pocketforge:backend-wakelock");
         mBackendWakeLock.acquire();
-        Logger.logDebug(LOG_TAG, "Backend wake lock acquired");
+        if (mBackendObserver != null) {
+            mBackendObserver.logDebug("Backend wake lock acquired");
+        }
     }
 
     /**
@@ -1166,7 +1263,9 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
 
         mBackendWakeLock.release();
         mBackendWakeLock = null;
-        Logger.logDebug(LOG_TAG, "Backend wake lock released");
+        if (mBackendObserver != null) {
+            mBackendObserver.logDebug("Backend wake lock released");
+        }
     }
 
     /**
@@ -1177,10 +1276,25 @@ public final class TermuxService extends Service implements AppShell.AppShellCli
     }
 
     /**
+     * Returns whether the backend has permanently failed (crash loop detected).
+     * Activities should check this to show error UI.
+     */
+    public boolean isBackendFailed() {
+        return mBackendFailed;
+    }
+
+    /**
      * Returns the backend initialization error, or null if no error.
      */
     public String getBackendError() {
         return mBackendError;
+    }
+
+    /**
+     * Returns the BackendObserver for access to log lines and crash state.
+     */
+    public BackendObserver getBackendObserver() {
+        return mBackendObserver;
     }
 
     /**

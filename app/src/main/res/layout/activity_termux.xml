@@ -454,6 +454,18 @@
                                 android:textColor="@color/pf_text_primary"
                                 android:textSize="14sp" />
 
+                            <com.google.android.material.textview.MaterialTextView
+                                android:id="@+id/settings_backend_logs"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:minHeight="48dp"
+                                android:gravity="center_vertical"
+                                android:background="@drawable/pf_settings_item_background"
+                                android:paddingHorizontal="12dp"
+                                android:text="@string/drawer_settings_backend_logs"
+                                android:textColor="@color/pf_text_primary"
+                                android:textSize="14sp" />
+
                         </LinearLayout>
                     </ScrollView>
 

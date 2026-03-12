@@ -56,6 +56,14 @@
     <string name="drawer_settings_toggle_toolbar">Toggle Toolbar</string>
     <string name="drawer_settings_all_settings">All Settings</string>
     <string name="drawer_settings_gpu_renderer">GPU Renderer</string>
+    <string name="drawer_settings_backend_logs">Backend Logs</string>
+
+    <!-- Backend error dialog -->
+    <string name="backend_error_dialog_title">PocketForge Backend Failed</string>
+    <string name="backend_error_retry">Retry</string>
+    <string name="backend_error_open_terminal">Open Terminal</string>
+    <string name="backend_debug_panel_title">PocketForge Backend Debug</string>
+
     <!-- Codefactory WebView / Dashboard -->
     <string name="drawer_dashboard">Dashboard</string>
     <string name="webview_title_dashboard">Dashboard</string>

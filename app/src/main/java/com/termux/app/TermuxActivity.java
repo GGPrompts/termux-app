@@ -24,6 +24,8 @@ import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.RelativeLayout;
+import android.widget.ScrollView;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import com.termux.R;
@@ -55,6 +57,7 @@ import com.termux.shared.theme.NightMode;
 import com.termux.shared.view.ViewUtils;
 import com.termux.terminal.TerminalSession;
 import com.termux.terminal.TerminalSessionClient;
+import com.termux.app.codefactory.BackendObserver;
 import com.termux.app.codefactory.CodefactoryBridge;
 import com.termux.app.codefactory.CodefactorySurfaceView;
 import com.termux.app.codefactory.DeXInputHandler;
@@ -69,6 +72,7 @@ import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.viewpager.widget.ViewPager;
 
 import java.util.Arrays;
+import java.util.List;
 
 /**
  * A terminal emulator activity.
@@ -278,6 +282,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setDashboardButtonView();
 
+        setBackendLogsButtonView();
+
         registerForContextMenu(mTerminalView);
         if (mCodefactorySurfaceView != null) {
             registerForContextMenu(mCodefactorySurfaceView);
@@ -463,6 +469,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (mCodefactorySurfaceView != null && !mGpuRendererActive) {
             mCodefactorySurfaceView.post(() -> toggleGpuRenderer());
         }
+
+        // Check if the backend has failed and show error dialog if needed.
+        checkAndShowBackendErrorDialog();
     }
 
     @Override
@@ -774,6 +783,16 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 getDrawer().closeDrawers();
                 Intent intent = CodefactoryWebViewActivity.newInstance(TermuxActivity.this);
                 startActivity(intent);
+            });
+        }
+    }
+
+    private void setBackendLogsButtonView() {
+        View backendLogsButton = findViewById(R.id.settings_backend_logs);
+        if (backendLogsButton != null) {
+            backendLogsButton.setOnClickListener(v -> {
+                getDrawer().closeDrawers();
+                showBackendDebugPanel();
             });
         }
     }
@@ -1425,6 +1444,153 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
 
+
+    // -----------------------------------------------------------------------
+    // Backend error dialog and debug panel
+    // -----------------------------------------------------------------------
+
+    /**
+     * Check if the backend has failed and show an error dialog if so.
+     * Called from onServiceConnected and can be called from onResume.
+     */
+    private void checkAndShowBackendErrorDialog() {
+        if (mTermuxService == null) return;
+
+        if (mTermuxService.isBackendFailed() || mTermuxService.getBackendError() != null) {
+            // Delay briefly to let the activity finish rendering
+            mTerminalView.postDelayed(this::showBackendErrorDialog, 500);
+        }
+    }
+
+    /**
+     * Show a dialog informing the user that the PocketForge backend failed to start.
+     * Displays the last 20 log lines, a Retry button, and an Open Terminal button.
+     */
+    private void showBackendErrorDialog() {
+        if (isFinishing() || isDestroyed()) return;
+        if (mTermuxService == null) return;
+
+        String errorMsg = mTermuxService.getBackendError();
+        BackendObserver observer = mTermuxService.getBackendObserver();
+
+        StringBuilder body = new StringBuilder();
+        body.append("The PocketForge backend failed to start.");
+
+        if (errorMsg != null) {
+            body.append("\n\nError: ").append(errorMsg);
+        }
+
+        if (observer != null && observer.isCrashLoopDetected()) {
+            body.append("\n\nA crash loop was detected (")
+                .append(observer.getCrashCount())
+                .append(" crashes in 60 seconds). Automatic retries have been stopped.");
+        }
+
+        // Append last log lines
+        if (observer != null) {
+            List<String> logLines = observer.readLastLogLines(BackendObserver.ERROR_DIALOG_LINE_COUNT);
+            if (!logLines.isEmpty()) {
+                body.append("\n\n--- Recent log ---\n");
+                for (String line : logLines) {
+                    body.append(line).append("\n");
+                }
+            }
+        }
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+            .setTitle(getString(R.string.backend_error_dialog_title))
+            .setMessage(body.toString())
+            .setCancelable(true)
+            .setPositiveButton(getString(R.string.backend_error_retry), (dialog, which) -> {
+                if (mTermuxService != null) {
+                    mTermuxService.retryBackendStart();
+                    showToast("Retrying backend start...", false);
+                }
+            })
+            .setNegativeButton(getString(R.string.backend_error_open_terminal), (dialog, which) -> {
+                // Just dismiss -- user can use the terminal for debugging
+                dialog.dismiss();
+            });
+
+        builder.show();
+    }
+
+    /**
+     * Show the developer debug panel as a dialog with recent backend log lines.
+     * Accessible from the drawer Settings tab.
+     */
+    public void showBackendDebugPanel() {
+        if (mTermuxService == null) {
+            showToast("Service not connected", false);
+            return;
+        }
+
+        BackendObserver observer = mTermuxService.getBackendObserver();
+        if (observer == null) {
+            showToast("Backend observer not available", false);
+            return;
+        }
+
+        List<String> logLines = observer.getRecentLogLines(BackendObserver.LOG_RING_BUFFER_SIZE);
+
+        // Build a scrollable text view with log lines
+        ScrollView scrollView = new ScrollView(this);
+        scrollView.setPadding(24, 16, 24, 16);
+
+        TextView logView = new TextView(this);
+        logView.setTextSize(11f);
+        logView.setTypeface(android.graphics.Typeface.MONOSPACE);
+        logView.setTextColor(getResources().getColor(R.color.pf_text_primary));
+
+        if (logLines.isEmpty()) {
+            logView.setText("No log entries yet.");
+        } else {
+            StringBuilder sb = new StringBuilder();
+            for (String line : logLines) {
+                sb.append(line).append("\n");
+            }
+            logView.setText(sb.toString());
+        }
+
+        scrollView.addView(logView);
+        scrollView.setBackgroundColor(getResources().getColor(R.color.pf_bg_secondary));
+
+        // Scroll to bottom after layout
+        scrollView.post(() -> scrollView.fullScroll(View.FOCUS_DOWN));
+
+        // Build status header
+        StringBuilder statusHeader = new StringBuilder();
+        statusHeader.append("Backend: ");
+        if (mTermuxService.isBackendFailed()) {
+            statusHeader.append("FAILED (crash loop)");
+        } else if (mTermuxService.isBackendRunning()) {
+            statusHeader.append("Running");
+        } else if (mTermuxService.getBackendError() != null) {
+            statusHeader.append("Error");
+        } else {
+            statusHeader.append("Starting...");
+        }
+        statusHeader.append(" | Crashes: ").append(observer.getCrashCount());
+        statusHeader.append(" | Lines: ").append(logLines.size());
+
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+            .setTitle(getString(R.string.backend_debug_panel_title))
+            .setMessage(statusHeader.toString())
+            .setView(scrollView)
+            .setCancelable(true)
+            .setPositiveButton("Close", null);
+
+        if (mTermuxService.isBackendFailed() || mTermuxService.getBackendError() != null) {
+            builder.setNeutralButton(getString(R.string.backend_error_retry), (dialog, which) -> {
+                if (mTermuxService != null) {
+                    mTermuxService.retryBackendStart();
+                    showToast("Retrying backend start...", false);
+                }
+            });
+        }
+
+        builder.show();
+    }
 
     public static void startTermuxActivity(@NonNull final Context context) {
         ActivityUtils.startActivity(context, newInstance(context));
