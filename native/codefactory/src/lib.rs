@@ -615,6 +615,99 @@ pub extern "system" fn Java_com_termux_app_codefactory_CodefactoryBridge_nativeD
 }
 
 // ---------------------------------------------------------------------------
+// Backend lifecycle (Axum server stubs)
+// ---------------------------------------------------------------------------
+
+/// Start the codefactory backend (Axum HTTP server).
+///
+/// This is a stub that logs the request and returns success. The actual Axum
+/// server integration will be implemented later.
+///
+/// home_path: the Termux home directory (for config, logs, sockets)
+/// port: the port to bind on (typically 3001)
+///
+/// Returns 0 on success, -1 on failure.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_termux_app_codefactory_CodefactoryBridge_nativeStartBackend<
+    'local,
+>(
+    mut env: JNIEnv<'local>,
+    _class: JClass<'local>,
+    home_path: JString<'local>,
+    port: jint,
+) -> jint {
+    let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+        let home_str: String = if home_path.is_null() {
+            "<null>".to_string()
+        } else {
+            env.get_string(&home_path)
+                .map(|s| s.into())
+                .unwrap_or_else(|_| "<invalid>".to_string())
+        };
+
+        log::info!(
+            "nativeStartBackend: backend start requested (home={}, port={})",
+            home_str,
+            port
+        );
+
+        // Stub: return success. Actual Axum server start comes later.
+        0
+    }));
+
+    match result {
+        Ok(code) => code,
+        Err(e) => {
+            log::error!(
+                "nativeStartBackend: PANIC caught: {:?}",
+                panic_message(&e)
+            );
+            -1
+        }
+    }
+}
+
+/// Stop the codefactory backend gracefully.
+///
+/// This is a stub that logs the request. The actual shutdown logic will be
+/// implemented when the Axum server integration is added.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_termux_app_codefactory_CodefactoryBridge_nativeStopBackend(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    let result = panic::catch_unwind(|| {
+        log::info!("nativeStopBackend: backend stop requested");
+    });
+
+    if let Err(e) = result {
+        log::error!(
+            "nativeStopBackend: PANIC caught: {:?}",
+            panic_message(&e)
+        );
+    }
+}
+
+/// Check if the backend is ready to accept HTTP requests.
+///
+/// This is a stub that always returns 1 (ready). The actual readiness check
+/// will query the Axum server state when integrated.
+///
+/// Returns 1 if ready, 0 otherwise.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_termux_app_codefactory_CodefactoryBridge_nativeIsBackendReady(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jint {
+    let result = panic::catch_unwind(|| {
+        log::debug!("nativeIsBackendReady: returning true (stub)");
+        1
+    });
+
+    result.unwrap_or(0)
+}
+
+// ---------------------------------------------------------------------------
 // DeX support: mouse events and terminal resize
 // ---------------------------------------------------------------------------
 
