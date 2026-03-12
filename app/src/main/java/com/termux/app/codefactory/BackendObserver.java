@@ -38,7 +38,7 @@ public class BackendObserver {
     private static final long CRASH_WINDOW_MS = 60_000;
 
     /** Number of log lines to retain in memory for the debug panel / error dialog. */
-    private static final int LOG_RING_BUFFER_SIZE = 200;
+    public static final int LOG_RING_BUFFER_SIZE = 200;
 
     /** Number of log lines shown in the error dialog. */
     public static final int ERROR_DIALOG_LINE_COUNT = 20;
