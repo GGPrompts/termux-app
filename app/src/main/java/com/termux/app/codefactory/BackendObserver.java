@@ -351,20 +351,29 @@ public class BackendObserver {
             // Check if the process is still alive
             File procDir = new File("/proc/" + pid);
             if (procDir.exists()) {
-                // Process exists -- check if it looks like it could be ours
+                // Process exists -- check if it is actually the codefactory backend
                 File cmdlineFile = new File(procDir, "cmdline");
                 String cmdline = "";
                 if (cmdlineFile.exists() && cmdlineFile.canRead()) {
                     cmdline = readFileContents(cmdlineFile);
                 }
 
-                // Kill the orphaned process
-                logWarn("Killing orphaned backend process with PID " + pid
-                        + " (cmdline: " + cmdline.replace('\0', ' ').trim() + ")");
-                try {
-                    android.os.Process.killProcess(pid);
-                } catch (Exception e) {
-                    logError("Failed to kill orphaned process " + pid, e);
+                // /proc/pid/cmdline uses NUL separators; normalize for matching
+                String cmdlineReadable = cmdline.replace('\0', ' ').trim();
+
+                if (cmdlineReadable.contains("codefactory")) {
+                    // Confirmed: this is our backend process -- kill it
+                    logWarn("Killing orphaned backend process with PID " + pid
+                            + " (cmdline: " + cmdlineReadable + ")");
+                    try {
+                        android.os.Process.killProcess(pid);
+                    } catch (Exception e) {
+                        logError("Failed to kill orphaned process " + pid, e);
+                    }
+                } else {
+                    // PID was recycled to a different process -- do NOT kill it
+                    logWarn("Stale PID " + pid + " was recycled to another process"
+                            + " (cmdline: " + cmdlineReadable + "), removing PID file without killing");
                 }
             } else {
                 logDebug("Stale PID " + pid + " is no longer running");
