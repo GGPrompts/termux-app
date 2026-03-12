@@ -5,8 +5,14 @@
 //! - `GlyphKey` = (char, bold, italic) -- each unique combo gets its own atlas entry
 //! - Row-based packing: fill rows left-to-right, advance to next row when full
 //! - HashMap<GlyphKey, AtlasEntry> for O(1) lookup
-//! - Atlas starts at 1024x1024, grows by adding pages if needed
+//! - Atlas starts at 2048x2048, grows by doubling height if needed
 //! - Pre-rasterizes ASCII 0x20..=0x7E on init for cache warmth
+//!
+//! Font stack (fallback order):
+//! 1. JetBrains Mono Nerd Font (primary) -- covers ASCII, box drawing, powerline,
+//!    devicons, weather icons, Material Design, Font Awesome, Octicons, etc.
+//! 2. Missing glyphs produce a zero-size atlas entry (blank cell) rather than tofu.
+//!    Color emoji is not supported (atlas is R8Unorm / grayscale).
 
 use std::collections::HashMap;
 
@@ -72,13 +78,14 @@ pub struct GlyphAtlas {
 impl GlyphAtlas {
     /// Create a new glyph atlas with the given font size.
     ///
-    /// Loads the bundled JetBrains Mono Regular and Bold fonts.
-    /// Pre-rasterizes ASCII printable range (0x20..=0x7E) for both regular and bold.
+    /// Loads the bundled JetBrains Mono Nerd Font (Regular and Bold).
+    /// Pre-rasterizes ASCII printable range (0x20..=0x7E) for both regular and bold,
+    /// plus box drawing, block elements, and common Nerd Font / powerline glyphs.
     pub fn new(font_size: f32) -> Self {
         let font_data_regular =
-            include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf");
+            include_bytes!("../assets/fonts/JetBrainsMonoNerdFont-Regular.ttf");
         let font_data_bold =
-            include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf");
+            include_bytes!("../assets/fonts/JetBrainsMonoNerdFont-Bold.ttf");
 
         let settings = fontdue::FontSettings {
             scale: font_size,
@@ -87,10 +94,16 @@ impl GlyphAtlas {
 
         let font_regular =
             fontdue::Font::from_bytes(font_data_regular.as_slice(), settings)
-                .expect("Failed to load JetBrains Mono Regular");
+                .expect("Failed to load JetBrains Mono Nerd Font Regular");
         let font_bold =
             fontdue::Font::from_bytes(font_data_bold.as_slice(), settings)
-                .expect("Failed to load JetBrains Mono Bold");
+                .expect("Failed to load JetBrains Mono Nerd Font Bold");
+
+        log::info!(
+            "GlyphAtlas: loaded Nerd Font Regular ({} glyphs), Bold ({} glyphs)",
+            font_regular.glyph_count(),
+            font_bold.glyph_count()
+        );
 
         // Compute cell metrics from the regular font
         let metrics_m = font_regular.metrics('M', font_size);
@@ -111,8 +124,10 @@ impl GlyphAtlas {
             (font_size * 1.2, font_size * 0.8)
         };
 
-        let atlas_width = 1024u32;
-        let atlas_height = 1024u32;
+        // Start with a larger atlas (2048x2048) since Nerd Font has many more
+        // glyphs to pre-rasterize than plain JetBrains Mono
+        let atlas_width = 2048u32;
+        let atlas_height = 2048u32;
         let pixels = vec![0u8; (atlas_width * atlas_height) as usize];
 
         let mut atlas = Self {
@@ -129,7 +144,7 @@ impl GlyphAtlas {
             cursor_y: 1,
             row_height: 0,
             padding: 2,
-            entries: HashMap::with_capacity(256),
+            entries: HashMap::with_capacity(512),
             dirty: true,
         };
 
@@ -147,7 +162,7 @@ impl GlyphAtlas {
             });
         }
 
-        // Pre-rasterize common box-drawing characters
+        // Pre-rasterize common box-drawing characters (U+2500..U+257F)
         for ch in '\u{2500}'..='\u{257F}' {
             atlas.rasterize(GlyphKey {
                 ch,
@@ -156,7 +171,7 @@ impl GlyphAtlas {
             });
         }
 
-        // Block elements
+        // Block elements (U+2580..U+259F)
         for ch in '\u{2580}'..='\u{259F}' {
             atlas.rasterize(GlyphKey {
                 ch,
@@ -164,6 +179,78 @@ impl GlyphAtlas {
                 italic: false,
             });
         }
+
+        // Powerline symbols (U+E0A0..U+E0D4) -- branch, lock, line number, etc.
+        for cp in 0xE0A0u32..=0xE0D4 {
+            if let Some(ch) = char::from_u32(cp) {
+                atlas.rasterize(GlyphKey {
+                    ch,
+                    bold: false,
+                    italic: false,
+                });
+            }
+        }
+
+        // Powerline Extra symbols (U+E0B0..U+E0C8) -- arrow separators, flames, etc.
+        // (overlaps with above range, rasterize is idempotent due to cache check)
+
+        // Seti-UI / Custom (U+E5FA..U+E6AC) -- file type icons
+        for cp in 0xE5FAu32..=0xE6AC {
+            if let Some(ch) = char::from_u32(cp) {
+                atlas.rasterize(GlyphKey {
+                    ch,
+                    bold: false,
+                    italic: false,
+                });
+            }
+        }
+
+        // Devicons (U+E700..U+E7C5) -- programming language and tool icons
+        for cp in 0xE700u32..=0xE7C5 {
+            if let Some(ch) = char::from_u32(cp) {
+                atlas.rasterize(GlyphKey {
+                    ch,
+                    bold: false,
+                    italic: false,
+                });
+            }
+        }
+
+        // Font Awesome (U+F000..U+F2E0) -- general purpose icons
+        for cp in 0xF000u32..=0xF2E0 {
+            if let Some(ch) = char::from_u32(cp) {
+                atlas.rasterize(GlyphKey {
+                    ch,
+                    bold: false,
+                    italic: false,
+                });
+            }
+        }
+
+        // Font Awesome Extension (U+E200..U+E2A9) -- additional FA icons
+        for cp in 0xE200u32..=0xE2A9 {
+            if let Some(ch) = char::from_u32(cp) {
+                atlas.rasterize(GlyphKey {
+                    ch,
+                    bold: false,
+                    italic: false,
+                });
+            }
+        }
+
+        // Octicons (U+F400..U+F532, U+2665, U+26A1) -- GitHub icons
+        for cp in 0xF400u32..=0xF532 {
+            if let Some(ch) = char::from_u32(cp) {
+                atlas.rasterize(GlyphKey {
+                    ch,
+                    bold: false,
+                    italic: false,
+                });
+            }
+        }
+
+        // Material Design Icons (U+F0001..U+F1AF0) -- too many to pre-rasterize,
+        // these will be rasterized on-demand via get_or_insert()
 
         log::info!(
             "GlyphAtlas: initialized {}x{}, cell={}x{}, baseline={}, entries={}",
@@ -187,16 +274,53 @@ impl GlyphAtlas {
     }
 
     /// Rasterize a glyph and insert it into the atlas.
+    ///
+    /// Font fallback order:
+    /// 1. Bold font (if key.bold) or regular font
+    /// 2. Regular font (fallback if bold lacks the glyph)
+    /// 3. Empty entry (if no font covers the character -- e.g. color emoji)
     fn rasterize(&mut self, key: GlyphKey) -> AtlasEntry {
         // Already cached?
         if let Some(&entry) = self.entries.get(&key) {
             return entry;
         }
 
+        // Select font with fallback: preferred -> other variant -> none
         let font = if key.bold {
+            if self.font_bold.has_glyph(key.ch) {
+                &self.font_bold
+            } else if self.font_regular.has_glyph(key.ch) {
+                &self.font_regular
+            } else {
+                // No font covers this glyph -- insert empty entry
+                let entry = AtlasEntry {
+                    x: 0,
+                    y: 0,
+                    width: 0,
+                    height: 0,
+                    offset_x: 0.0,
+                    offset_y: 0.0,
+                };
+                self.entries.insert(key, entry);
+                return entry;
+            }
+        } else if self.font_regular.has_glyph(key.ch) {
+            &self.font_regular
+        } else if self.font_bold.has_glyph(key.ch) {
+            // Some glyphs might only exist in bold (unlikely but safe)
             &self.font_bold
         } else {
-            &self.font_regular
+            // No font covers this glyph -- insert empty entry
+            let entry = AtlasEntry {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0,
+                offset_x: 0.0,
+                offset_y: 0.0,
+            };
+            self.entries.insert(key, entry);
+            return entry;
         };
 
         let (metrics, bitmap) = font.rasterize(key.ch, self.font_size);
