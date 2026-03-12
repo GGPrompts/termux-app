@@ -235,8 +235,69 @@ task downloadBootstraps() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Task: copyCodefactoryLib
+// Copies the cross-compiled libcodefactory.so from the Rust target directory
+// into app/src/main/jniLibs/arm64-v8a/ so it gets packaged into the APK.
+//
+// The .so is produced by: cargo build --target aarch64-linux-android --release
+// (run via scripts/build-codefactory-android.sh or manually)
+//
+// This task checks for the release build first, then falls back to debug.
+// If neither exists, the build continues with a warning -- the APK will work
+// but CodefactoryBridge.loadLibrary() will return false at runtime.
+// ---------------------------------------------------------------------------
+task copyCodefactoryLib {
+    def rustTarget = "aarch64-linux-android"
+    def crateDir = file("${rootDir}/native/codefactory")
+    def jniLibsDir = file("src/main/jniLibs/arm64-v8a")
+    def soName = "libcodefactory.so"
+
+    // Check release first, then debug
+    def releaseSo = file("${crateDir}/target/${rustTarget}/release/${soName}")
+    def debugSo = file("${crateDir}/target/${rustTarget}/debug/${soName}")
+
+    doLast {
+        def sourceSo = null
+        if (releaseSo.exists()) {
+            sourceSo = releaseSo
+            logger.quiet("copyCodefactoryLib: using release build: ${releaseSo}")
+        } else if (debugSo.exists()) {
+            sourceSo = debugSo
+            logger.quiet("copyCodefactoryLib: using debug build: ${debugSo}")
+        }
+
+        if (sourceSo != null) {
+            jniLibsDir.mkdirs()
+            def destFile = new File(jniLibsDir, soName)
+            // Only copy if source is newer than destination
+            if (!destFile.exists() || sourceSo.lastModified() > destFile.lastModified()) {
+                ant.copy(file: sourceSo, tofile: destFile, overwrite: true)
+                logger.quiet("copyCodefactoryLib: copied ${soName} (${(destFile.length() / 1024 / 1024).round(1)} MB) to jniLibs/arm64-v8a/")
+            } else {
+                logger.quiet("copyCodefactoryLib: ${soName} is up to date")
+            }
+        } else {
+            // Check if a previously-copied .so exists in jniLibs
+            def existingSo = new File(jniLibsDir, soName)
+            if (existingSo.exists()) {
+                logger.quiet("copyCodefactoryLib: no Rust build found, using existing ${soName} in jniLibs")
+            } else {
+                logger.warn("WARNING: copyCodefactoryLib: no ${soName} found. Cross-compile first:")
+                logger.warn("  bash scripts/build-codefactory-android.sh --no-apk")
+                logger.warn("APK will build but GPU renderer will be unavailable at runtime.")
+            }
+        }
+    }
+}
+
 afterEvaluate {
     android.applicationVariants.all { variant ->
         variant.javaCompileProvider.get().dependsOn(downloadBootstraps)
+        // Ensure the codefactory .so is copied before merging native libs into the APK
+        def mergeTask = tasks.findByName("merge${variant.name.capitalize()}NativeLibs")
+        if (mergeTask != null) {
+            mergeTask.dependsOn(copyCodefactoryLib)
+        }
     }
 }
