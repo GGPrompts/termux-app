@@ -268,6 +268,9 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         setToggleKeyboardView();
 
         registerForContextMenu(mTerminalView);
+        if (mCodefactorySurfaceView != null) {
+            registerForContextMenu(mCodefactorySurfaceView);
+        }
 
         FileReceiverActivity.updateFileReceiverActivityComponentsState(this);
 

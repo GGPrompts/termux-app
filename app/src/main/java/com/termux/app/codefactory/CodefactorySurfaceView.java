@@ -9,6 +9,7 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.inputmethod.InputMethodManager;
 
 /**
  * A SurfaceView that hosts the wgpu-based terminal renderer.
@@ -184,6 +185,13 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
                     event.getX(),
                     event.getY()
                 );
+
+                // Show soft keyboard on tap
+                if (event.getAction() == MotionEvent.ACTION_UP) {
+                    requestFocus();
+                    showSoftKeyboard();
+                }
+
                 return true;
             } catch (Throwable t) {
                 handleJniFailure("onTouchEvent", t);
@@ -214,6 +222,16 @@ public class CodefactorySurfaceView extends SurfaceView implements SurfaceHolder
         // For now, only forward key down events to Rust.
         // Key up can be added later if needed for key repeat handling.
         return super.onKeyUp(keyCode, event);
+    }
+
+    /**
+     * Show the soft keyboard for this view.
+     */
+    private void showSoftKeyboard() {
+        InputMethodManager imm = (InputMethodManager) getContext().getSystemService(Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT);
+        }
     }
 
     // -----------------------------------------------------------------------
