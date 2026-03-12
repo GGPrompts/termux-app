@@ -3,12 +3,6 @@
 <!DOCTYPE resources [
     <!ENTITY TERMUX_PACKAGE_NAME "com.termux">
     <!ENTITY TERMUX_APP_NAME "PocketForge">
-    <!ENTITY TERMUX_API_APP_NAME "Termux:API">
-    <!ENTITY TERMUX_BOOT_APP_NAME "Termux:Boot">
-    <!ENTITY TERMUX_FLOAT_APP_NAME "Termux:Float">
-    <!ENTITY TERMUX_STYLING_APP_NAME "Termux:Styling">
-    <!ENTITY TERMUX_TASKER_APP_NAME "Termux:Tasker">
-    <!ENTITY TERMUX_WIDGET_APP_NAME "Termux:Widget">
     ]>
 
 <resources>
@@ -82,17 +76,8 @@
     <string name="action_kill_process">Kill process (%d)</string>
     <string name="title_confirm_kill_process">Really kill this session?</string>
 
-    <string name="action_style_terminal">Style</string>
     <string name="action_toggle_keep_screen_on">Keep screen on</string>
-    <string name="action_open_help">Help</string>
     <string name="action_open_settings">Settings</string>
-
-    <string name="action_report_issue">Report Issue</string>
-    <string name="msg_generating_report">Generating Report</string>
-    <string name="msg_add_termux_debug_info">Add termux debug info to report?</string>
-
-    <string name="error_styling_not_installed">The &TERMUX_STYLING_APP_NAME; Plugin App is not installed.</string>
-    <string name="action_styling_install">Install</string>
 
 
 
@@ -111,14 +96,6 @@
     <string name="error_termux_service_unsupported_execution_command_runner">Unsupported execution command runner to TermuxService: `%1$s`</string>
     <string name="error_termux_service_unsupported_execution_command_shell_create_mode">Unsupported execution command shell create mode to TermuxService: `%1$s`</string>
     <string name="error_termux_service_execution_command_shell_name_unset">Shell name not set but `%1$s` shell create mode passed</string>
-
-
-
-    <!-- Termux RunCommandService -->
-    <string name="error_run_command_service_invalid_intent_action">Invalid intent action to RunCommandService: `%1$s`</string>
-    <string name="error_run_command_service_invalid_execution_command_runner">Invalid execution command runner to RunCommandService: `%1$s`</string>
-    <string name="error_run_command_service_mandatory_extra_missing">Mandatory extra missing to RunCommandService: \"%1$s\"</string>
-    <string name="error_run_command_service_api_help">Visit %1$s for more info on RUN_COMMAND Intent usage.</string>
 
 
 
@@ -205,34 +182,5 @@
 
 
 
-    <!-- Termux:API App Preferences -->
-    <string name="termux_api_preferences_title">&TERMUX_API_APP_NAME;</string>
-    <string name="termux_api_preferences_summary">Preferences for &TERMUX_API_APP_NAME; app</string>
-
-
-
-    <!-- Termux:Float App Preferences -->
-    <string name="termux_float_preferences_title">&TERMUX_FLOAT_APP_NAME;</string>
-    <string name="termux_float_preferences_summary">Preferences for &TERMUX_FLOAT_APP_NAME; app</string>
-
-
-
-    <!-- Termux:Tasker App Preferences -->
-    <string name="termux_tasker_preferences_title">&TERMUX_TASKER_APP_NAME;</string>
-    <string name="termux_tasker_preferences_summary">Preferences for &TERMUX_TASKER_APP_NAME; app</string>
-
-
-
-    <!-- Termux:Widget App Preferences -->
-    <string name="termux_widget_preferences_title">&TERMUX_WIDGET_APP_NAME;</string>
-    <string name="termux_widget_preferences_summary">Preferences for &TERMUX_WIDGET_APP_NAME; app</string>
-
-
-
-    <!-- About Preference -->
-    <string name="about_preference_title">About</string>
-
-    <!-- Donate Preference -->
-    <string name="donate_preference_title">Donate</string>
 
 </resources>
