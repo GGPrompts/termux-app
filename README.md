@@ -1,14 +1,16 @@
-# CodeFactory
+# PocketForge
 
 **Built on [Termux](https://termux.dev) (GPLv3)**
 
-CodeFactory is a custom Android terminal application and Linux environment, forked from [termux/termux-app](https://github.com/termux/termux-app). It serves as the shell environment for the [CodeFactory](https://github.com/GGPrompts/codefactory) development workstation app.
+PocketForge is a custom Android terminal application and Linux environment, forked from [termux/termux-app](https://github.com/termux/termux-app). It serves as the shell environment for the [codefactory](https://github.com/GGPrompts/codefactory) development workstation backend.
 
 ## What is different from stock Termux?
 
-- App display name changed to "CodeFactory"
+- App display name changed to "PocketForge"
 - The Android `applicationId` remains `com.termux` to maintain compatibility with all existing Termux bootstrap packages and binaries (which have hardcoded `/data/data/com.termux/files/usr` paths)
-- Future changes will include a customized navigation drawer, embedded WebView for the CodeFactory UI, and bundled development tools
+- Includes a native Rust crate (`native/codefactory/`) for the GPU-accelerated terminal renderer (wgpu + alacritty_terminal), loaded as a .so via JNI
+- Cross-compilation scripts for building the Rust crate for Android aarch64
+- Future changes will include a customized navigation drawer, embedded WebView for the PocketForge UI, and bundled development tools
 
 For the packages installable inside the app, see [termux/termux-packages](https://github.com/termux/termux-packages).
 

@@ -1,0 +1,16 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Claude Code via Bun on Termux
+# Uses stock Bun 1.3.10 through ld.so directly (bypasses grun to preserve arg quoting)
+# --preload restores env vars that ld.so zeros
+CLAUDE_JS="/data/data/com.termux/files/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js"
+BUN_BIN="$HOME/.bun/bin/buno"
+PRELOAD="$HOME/.bun/bin/env-preload.js"
+LD_SO="/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1"
+GLIBC_PREFIX="/data/data/com.termux/files/usr/glibc"
+
+# Set up glibc environment (same as grun but with proper quoting)
+unset LD_PRELOAD
+export PATH="${GLIBC_PREFIX}/bin:${PATH}"
+
+cd "$HOME" 2>/dev/null
+exec "$LD_SO" "$BUN_BIN" --preload "$PRELOAD" "$CLAUDE_JS" "$@"

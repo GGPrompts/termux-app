@@ -1,0 +1,42 @@
+[package]
+name = "codefactory-android"
+version = "0.2.0"
+edition = "2021"
+description = "JNI bridge for wgpu GPU-accelerated terminal rendering on Android"
+
+[lib]
+crate-type = ["cdylib"]
+name = "codefactory"
+
+[features]
+default = ["terminal-pipeline"]
+terminal-pipeline = ["dep:alacritty_terminal", "dep:portable-pty"]
+
+[dependencies]
+jni = { version = "0.21", default-features = false }
+log = "0.4"
+android_logger = "0.14"
+ndk = { version = "0.9", features = ["api-level-28"] }
+ndk-sys = "0.6"
+raw-window-handle = "0.6"
+wgpu = { version = "24", features = ["vulkan-portability"] }
+pollster = "0.4"
+
+# POSIX fd operations (dup, close, ioctl for PTY sharing)
+libc = "0.2"
+
+# Text rendering
+fontdue = "0.9"
+bytemuck = { version = "1", features = ["derive"] }
+
+# Terminal emulation (PTY -> parser -> renderer pipeline)
+alacritty_terminal = { version = "0.25", optional = true }
+portable-pty = { version = "0.8", optional = true }
+
+[patch.crates-io]
+termios = { path = "termios-patch" }
+
+[profile.release]
+strip = true
+opt-level = "s"
+lto = true

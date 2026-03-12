@@ -28,6 +28,9 @@ local.properties
 *.swo
 *.swp
 
+# Rust build output
+target/
+
 # OS-specific files
 .DS_Store
 .DS_Store?
