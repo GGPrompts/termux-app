@@ -1,7 +1,6 @@
 package com.termux.app.terminal;
 
 import android.annotation.SuppressLint;
-import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.text.SpannableString;
@@ -16,17 +15,19 @@ import android.widget.ArrayAdapter;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
-import androidx.core.content.ContextCompat;
 
 import com.termux.R;
 import com.termux.app.TermuxActivity;
 import com.termux.shared.termux.shell.command.runner.terminal.TermuxSession;
-import com.termux.shared.theme.NightMode;
-import com.termux.shared.theme.ThemeUtils;
 import com.termux.terminal.TerminalSession;
 
 import java.util.List;
 
+/**
+ * ListView adapter for terminal sessions in the PocketForge navigation drawer.
+ * Displays sessions with status indicators (running/stopped/error),
+ * session name, process title, and session number.
+ */
 public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession> implements AdapterView.OnItemClickListener, AdapterView.OnItemLongClickListener {
 
     final TermuxActivity mActivity;
@@ -50,59 +51,99 @@ public class TermuxSessionsListViewController extends ArrayAdapter<TermuxSession
         }
 
         TextView sessionTitleView = sessionRowView.findViewById(R.id.session_title);
+        TextView sessionSubtitleView = sessionRowView.findViewById(R.id.session_subtitle);
+        TextView sessionNumberView = sessionRowView.findViewById(R.id.session_number);
+        View statusIndicator = sessionRowView.findViewById(R.id.session_status_indicator);
 
-        TerminalSession sessionAtRow = getItem(position).getTerminalSession();
-        if (sessionAtRow == null) {
+        TermuxSession termuxSession = getItem(position);
+        if (termuxSession == null) {
             sessionTitleView.setText("null session");
+            if (sessionSubtitleView != null) sessionSubtitleView.setVisibility(View.GONE);
             return sessionRowView;
         }
 
-        boolean shouldEnableDarkTheme = ThemeUtils.shouldEnableDarkTheme(mActivity, NightMode.getAppNightMode().getName());
-
-        if (shouldEnableDarkTheme) {
-            sessionTitleView.setBackground(
-                ContextCompat.getDrawable(mActivity, R.drawable.session_background_black_selected)
-            );
+        TerminalSession sessionAtRow = termuxSession.getTerminalSession();
+        if (sessionAtRow == null) {
+            sessionTitleView.setText("null session");
+            if (sessionSubtitleView != null) sessionSubtitleView.setVisibility(View.GONE);
+            return sessionRowView;
         }
 
+        // Session name and title
         String name = sessionAtRow.mSessionName;
         String sessionTitle = sessionAtRow.getTitle();
+        boolean hasName = !TextUtils.isEmpty(name);
+        boolean hasTitle = !TextUtils.isEmpty(sessionTitle);
 
-        String numberPart = "[" + (position + 1) + "] ";
-        String sessionNamePart = (TextUtils.isEmpty(name) ? "" : name);
-        String sessionTitlePart = (TextUtils.isEmpty(sessionTitle) ? "" : ((sessionNamePart.isEmpty() ? "" : "\n") + sessionTitle));
+        // Primary text: session name or title or default
+        if (hasName) {
+            sessionTitleView.setText(name);
+        } else if (hasTitle) {
+            sessionTitleView.setText(sessionTitle);
+        } else {
+            sessionTitleView.setText("Terminal");
+        }
 
-        String fullSessionTitle = numberPart + sessionNamePart + sessionTitlePart;
-        SpannableString fullSessionTitleStyled = new SpannableString(fullSessionTitle);
-        fullSessionTitleStyled.setSpan(boldSpan, 0, numberPart.length() + sessionNamePart.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
-        fullSessionTitleStyled.setSpan(italicSpan, numberPart.length() + sessionNamePart.length(), fullSessionTitle.length(), Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
+        // Subtitle: process title (if name is set and title differs)
+        if (sessionSubtitleView != null) {
+            if (hasName && hasTitle) {
+                sessionSubtitleView.setText(sessionTitle);
+                sessionSubtitleView.setVisibility(View.VISIBLE);
+            } else if (!hasName && hasTitle) {
+                // Title already shown as primary; show pid as subtitle
+                sessionSubtitleView.setText("pid " + sessionAtRow.getPid());
+                sessionSubtitleView.setVisibility(View.VISIBLE);
+            } else {
+                sessionSubtitleView.setText("pid " + sessionAtRow.getPid());
+                sessionSubtitleView.setVisibility(View.VISIBLE);
+            }
+        }
 
-        sessionTitleView.setText(fullSessionTitleStyled);
+        // Session number
+        if (sessionNumberView != null) {
+            sessionNumberView.setText("#" + (position + 1));
+        }
 
+        // Status indicator
         boolean sessionRunning = sessionAtRow.isRunning();
+        if (statusIndicator != null) {
+            if (sessionRunning) {
+                statusIndicator.setBackgroundResource(R.drawable.pf_status_running);
+            } else if (sessionAtRow.getExitStatus() == 0) {
+                statusIndicator.setBackgroundResource(R.drawable.pf_status_stopped);
+            } else {
+                statusIndicator.setBackgroundResource(R.drawable.pf_status_error);
+            }
+        }
 
+        // Text styling for running/stopped sessions
         if (sessionRunning) {
             sessionTitleView.setPaintFlags(sessionTitleView.getPaintFlags() & ~Paint.STRIKE_THRU_TEXT_FLAG);
+            sessionTitleView.setTextColor(0xFFE6EDF3); // pf_text_primary
         } else {
             sessionTitleView.setPaintFlags(sessionTitleView.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
+            int color = sessionAtRow.getExitStatus() == 0 ? 0xFF6E7681 : 0xFFF85149; // muted or danger
+            sessionTitleView.setTextColor(color);
         }
-        int defaultColor = shouldEnableDarkTheme ? Color.WHITE : Color.BLACK;
-        int color = sessionRunning || sessionAtRow.getExitStatus() == 0 ? defaultColor : Color.RED;
-        sessionTitleView.setTextColor(color);
+
         return sessionRowView;
     }
 
     @Override
     public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
         TermuxSession clickedSession = getItem(position);
-        mActivity.getTermuxTerminalSessionClient().setCurrentSession(clickedSession.getTerminalSession());
-        mActivity.getDrawer().closeDrawers();
+        if (clickedSession != null) {
+            mActivity.getTermuxTerminalSessionClient().setCurrentSession(clickedSession.getTerminalSession());
+            mActivity.getDrawer().closeDrawers();
+        }
     }
 
     @Override
     public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
         final TermuxSession selectedSession = getItem(position);
-        mActivity.getTermuxTerminalSessionClient().renameSession(selectedSession.getTerminalSession());
+        if (selectedSession != null) {
+            mActivity.getTermuxTerminalSessionClient().renameSession(selectedSession.getTerminalSession());
+        }
         return true;
     }
 

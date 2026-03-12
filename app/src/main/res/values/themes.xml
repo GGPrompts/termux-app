@@ -34,10 +34,10 @@
         <item name="android:windowAllowReturnTransitionOverlap">true</item>
         <item name="android:windowAllowEnterTransitionOverlap">true</item>
 
-        <!-- Left drawer. -->
-        <item name="buttonBarButtonStyle">@style/TermuxActivity.Drawer.ButtonBarStyle.Light</item>
-        <item name="termuxActivityDrawerBackground">@color/white</item>
-        <item name="termuxActivityDrawerImageTint">@color/black</item>
+        <!-- Left drawer (PocketForge navigation). -->
+        <item name="buttonBarButtonStyle">@style/TermuxActivity.Drawer.ButtonBarStyle.Dark</item>
+        <item name="termuxActivityDrawerBackground">@color/pf_bg_primary</item>
+        <item name="termuxActivityDrawerImageTint">@color/pf_text_primary</item>
 
         <!-- Extra keys colors. -->
         <item name="extraKeysButtonTextColor">@color/white</item>

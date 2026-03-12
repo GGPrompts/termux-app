@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/floor_item_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/pf_floor_item_background"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingHorizontal="14dp"
+    android:paddingVertical="12dp"
+    android:layout_marginHorizontal="8dp"
+    android:layout_marginVertical="3dp">
+
+    <!-- Floor icon -->
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/floor_icon"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:gravity="center"
+        android:textColor="#FF58A6FF"
+        android:textSize="16sp" />
+
+    <!-- Floor info -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical">
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/floor_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FFE6EDF3"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/floor_session_count"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="#FF8B949E"
+            android:textSize="11sp"
+            android:layout_marginTop="1dp" />
+
+    </LinearLayout>
+
+</LinearLayout>

@@ -35,6 +35,35 @@
 
 
 
+    <!-- PocketForge Drawer Navigation -->
+    <string name="drawer_app_name">PocketForge</string>
+    <string name="drawer_tab_terminals">Terminals</string>
+    <string name="drawer_tab_floors">Floors</string>
+    <string name="drawer_tab_settings">Settings</string>
+    <string name="drawer_new_session">+ New</string>
+    <string name="drawer_add_floor">+ Add Floor</string>
+    <string name="drawer_floor_sessions_count">%d sessions</string>
+    <string name="drawer_floor_sessions_count_one">1 session</string>
+    <string name="drawer_floor_sessions_count_zero">No sessions</string>
+    <string name="drawer_floor_label">Floor: %s</string>
+    <string name="drawer_settings_appearance">Appearance</string>
+    <string name="drawer_settings_terminal">Terminal</string>
+    <string name="drawer_settings_advanced">Advanced</string>
+    <string name="drawer_settings_theme">Theme</string>
+    <string name="drawer_settings_font_size">Font Size</string>
+    <string name="drawer_settings_extra_keys">Extra Keys Layout</string>
+    <string name="drawer_settings_keep_screen_on">Keep Screen On</string>
+    <string name="drawer_settings_toggle_toolbar">Toggle Toolbar</string>
+    <string name="drawer_settings_all_settings">All Settings</string>
+    <string name="drawer_settings_gpu_renderer">GPU Renderer</string>
+    <string name="title_rename_floor">Rename Floor</string>
+    <string name="action_rename_floor_confirm">Rename</string>
+    <string name="title_create_floor">New Floor</string>
+    <string name="action_create_floor_confirm">Create</string>
+    <string name="title_delete_floor">Delete Floor</string>
+    <string name="msg_delete_floor_confirm">Delete floor \"%s\"? Sessions will be moved to General.</string>
+    <string name="title_assign_floor">Assign to Floor</string>
+
     <!-- Terminal Sidebar and Shortcuts -->
     <string name="action_new_session">New session</string>
     <string name="action_new_session_failsafe">Failsafe</string>

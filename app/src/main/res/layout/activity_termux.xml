@@ -48,49 +48,365 @@
 
             </FrameLayout>
 
+            <!-- PocketForge Navigation Drawer -->
             <LinearLayout
                 android:id="@+id/left_drawer"
-                android:layout_width="240dp"
+                android:layout_width="280dp"
                 android:layout_height="match_parent"
                 android:layout_gravity="start"
-                android:choiceMode="singleChoice"
-                android:divider="@android:color/transparent"
-                android:dividerHeight="0dp"
-                android:descendantFocusability="blocksDescendants"
                 android:orientation="vertical"
-                android:background="?attr/termuxActivityDrawerBackground">
+                android:background="#FF0D1117"
+                android:descendantFocusability="blocksDescendants">
 
-                <ListView
-                    android:id="@+id/terminal_sessions_list"
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp"
-                    android:layout_gravity="top"
-                    android:layout_weight="1"
-                    android:choiceMode="singleChoice"
-                    android:longClickable="true" />
-
+                <!-- Drawer Header / Branding -->
                 <LinearLayout
-                    style="?android:attr/buttonBarStyle"
+                    android:id="@+id/drawer_header"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal">
+                    android:orientation="vertical"
+                    android:paddingHorizontal="16dp"
+                    android:paddingTop="24dp"
+                    android:paddingBottom="12dp">
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/toggle_keyboard_button"
-                        style="?android:attr/buttonBarButtonStyle"
-                        android:layout_width="match_parent"
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/drawer_app_name"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/action_toggle_soft_keyboard" />
+                        android:text="@string/drawer_app_name"
+                        android:textColor="#FFE6EDF3"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:letterSpacing="0.05" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/new_session_button"
-                        style="?android:attr/buttonBarButtonStyle"
-                        android:layout_width="match_parent"
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/drawer_current_floor_label"
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/action_new_session" />
+                        android:layout_marginTop="2dp"
+                        android:textColor="#FF8B949E"
+                        android:textSize="12sp" />
+
                 </LinearLayout>
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:layout_marginHorizontal="16dp"
+                    android:background="#FF21262D" />
+
+                <!-- Tab bar: Terminals | Floors | Settings -->
+                <LinearLayout
+                    android:id="@+id/drawer_tab_bar"
+                    android:layout_width="match_parent"
+                    android:layout_height="40dp"
+                    android:orientation="horizontal"
+                    android:paddingHorizontal="8dp"
+                    android:paddingTop="8dp">
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/tab_terminals"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="@string/drawer_tab_terminals"
+                        android:textColor="#FF58A6FF"
+                        android:textSize="12sp"
+                        android:textStyle="bold" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/tab_floors"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="@string/drawer_tab_floors"
+                        android:textColor="#FF8B949E"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/tab_settings"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:layout_weight="1"
+                        android:gravity="center"
+                        android:text="@string/drawer_tab_settings"
+                        android:textColor="#FF8B949E"
+                        android:textSize="12sp" />
+
+                </LinearLayout>
+
+                <!-- Tab indicator line -->
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="3dp"
+                    android:layout_marginHorizontal="8dp">
+
+                    <View
+                        android:id="@+id/tab_indicator"
+                        android:layout_width="0dp"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/pf_tab_indicator" />
+                </FrameLayout>
+
+                <!-- Content area: switched by tabs -->
+                <FrameLayout
+                    android:id="@+id/drawer_content_area"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1">
+
+                    <!-- TERMINALS TAB: Session list for current floor -->
+                    <LinearLayout
+                        android:id="@+id/panel_terminals"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical"
+                        android:visibility="visible">
+
+                        <ListView
+                            android:id="@+id/terminal_sessions_list"
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
+                            android:divider="@android:color/transparent"
+                            android:dividerHeight="0dp"
+                            android:choiceMode="singleChoice"
+                            android:longClickable="true"
+                            android:paddingTop="4dp"
+                            android:clipToPadding="false" />
+
+                        <!-- Action buttons -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="8dp"
+                            android:paddingVertical="8dp">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/new_session_button"
+                                android:layout_width="0dp"
+                                android:layout_height="36dp"
+                                android:layout_weight="1"
+                                android:layout_marginEnd="4dp"
+                                android:background="@drawable/pf_button_primary"
+                                android:text="@string/drawer_new_session"
+                                android:textColor="#FFFFFFFF"
+                                android:textSize="12sp"
+                                android:textAllCaps="false"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                app:backgroundTint="@null" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/toggle_keyboard_button"
+                                android:layout_width="0dp"
+                                android:layout_height="36dp"
+                                android:layout_weight="1"
+                                android:layout_marginStart="4dp"
+                                android:background="@drawable/pf_button_secondary"
+                                android:text="@string/action_toggle_soft_keyboard"
+                                android:textColor="#FFE6EDF3"
+                                android:textSize="12sp"
+                                android:textAllCaps="false"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                app:backgroundTint="@null" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                    <!-- FLOORS TAB: Floor list -->
+                    <LinearLayout
+                        android:id="@+id/panel_floors"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <ListView
+                            android:id="@+id/floor_list"
+                            android:layout_width="match_parent"
+                            android:layout_height="0dp"
+                            android:layout_weight="1"
+                            android:divider="@android:color/transparent"
+                            android:dividerHeight="0dp"
+                            android:choiceMode="singleChoice"
+                            android:longClickable="true"
+                            android:paddingTop="4dp"
+                            android:clipToPadding="false" />
+
+                        <!-- Add floor button -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="8dp"
+                            android:paddingVertical="8dp">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/add_floor_button"
+                                android:layout_width="match_parent"
+                                android:layout_height="36dp"
+                                android:background="@drawable/pf_button_secondary"
+                                android:text="@string/drawer_add_floor"
+                                android:textColor="#FFE6EDF3"
+                                android:textSize="12sp"
+                                android:textAllCaps="false"
+                                android:insetTop="0dp"
+                                android:insetBottom="0dp"
+                                app:backgroundTint="@null" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                    <!-- SETTINGS TAB: Quick settings -->
+                    <ScrollView
+                        android:id="@+id/panel_settings"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical"
+                            android:paddingHorizontal="12dp"
+                            android:paddingVertical="8dp">
+
+                            <!-- Settings section header -->
+                            <com.google.android.material.textview.MaterialTextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:layout_marginTop="8dp"
+                                android:layout_marginBottom="4dp"
+                                android:text="@string/drawer_settings_appearance"
+                                android:textColor="#FF8B949E"
+                                android:textSize="11sp"
+                                android:textStyle="bold"
+                                android:textAllCaps="true"
+                                android:letterSpacing="0.1" />
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:id="@+id/settings_theme"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/pf_settings_item_background"
+                                android:padding="12dp"
+                                android:text="@string/drawer_settings_theme"
+                                android:textColor="#FFE6EDF3"
+                                android:textSize="14sp" />
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:id="@+id/settings_font_size"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/pf_settings_item_background"
+                                android:padding="12dp"
+                                android:text="@string/drawer_settings_font_size"
+                                android:textColor="#FFE6EDF3"
+                                android:textSize="14sp" />
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:id="@+id/settings_extra_keys"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/pf_settings_item_background"
+                                android:padding="12dp"
+                                android:text="@string/drawer_settings_extra_keys"
+                                android:textColor="#FFE6EDF3"
+                                android:textSize="14sp" />
+
+                            <!-- Divider -->
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="1dp"
+                                android:layout_marginVertical="8dp"
+                                android:background="#FF21262D" />
+
+                            <!-- Terminal section -->
+                            <com.google.android.material.textview.MaterialTextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:layout_marginBottom="4dp"
+                                android:text="@string/drawer_settings_terminal"
+                                android:textColor="#FF8B949E"
+                                android:textSize="11sp"
+                                android:textStyle="bold"
+                                android:textAllCaps="true"
+                                android:letterSpacing="0.1" />
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:id="@+id/settings_keep_screen_on"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/pf_settings_item_background"
+                                android:padding="12dp"
+                                android:text="@string/drawer_settings_keep_screen_on"
+                                android:textColor="#FFE6EDF3"
+                                android:textSize="14sp" />
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:id="@+id/settings_toggle_toolbar"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/pf_settings_item_background"
+                                android:padding="12dp"
+                                android:text="@string/drawer_settings_toggle_toolbar"
+                                android:textColor="#FFE6EDF3"
+                                android:textSize="14sp" />
+
+                            <!-- Divider -->
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="1dp"
+                                android:layout_marginVertical="8dp"
+                                android:background="#FF21262D" />
+
+                            <!-- Advanced section -->
+                            <com.google.android.material.textview.MaterialTextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="4dp"
+                                android:layout_marginBottom="4dp"
+                                android:text="@string/drawer_settings_advanced"
+                                android:textColor="#FF8B949E"
+                                android:textSize="11sp"
+                                android:textStyle="bold"
+                                android:textAllCaps="true"
+                                android:letterSpacing="0.1" />
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:id="@+id/settings_full_settings"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/pf_settings_item_background"
+                                android:padding="12dp"
+                                android:text="@string/drawer_settings_all_settings"
+                                android:textColor="#FFE6EDF3"
+                                android:textSize="14sp" />
+
+                            <com.google.android.material.textview.MaterialTextView
+                                android:id="@+id/settings_gpu_renderer"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/pf_settings_item_background"
+                                android:padding="12dp"
+                                android:text="@string/drawer_settings_gpu_renderer"
+                                android:textColor="#FFE6EDF3"
+                                android:textSize="14sp" />
+
+                        </LinearLayout>
+                    </ScrollView>
+
+                </FrameLayout>
+
             </LinearLayout>
 
         </androidx.drawerlayout.widget.DrawerLayout>
