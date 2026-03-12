@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/webview_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/pf_bg_primary">
+
+    <!-- Toolbar with back navigation -->
+    <LinearLayout
+        android:id="@+id/webview_toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="8dp"
+        android:background="@color/pf_bg_secondary">
+
+        <ImageButton
+            android:id="@+id/webview_back_button"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_revert"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:scaleType="centerInside"
+            android:padding="8dp"
+            android:contentDescription="@string/webview_back"
+            android:tint="@color/pf_text_primary" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/webview_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="@string/webview_title_dashboard"
+            android:textColor="@color/pf_text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:singleLine="true"
+            android:ellipsize="end" />
+
+        <ImageButton
+            android:id="@+id/webview_reload_button"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_rotate"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:scaleType="centerInside"
+            android:padding="8dp"
+            android:contentDescription="@string/webview_reload"
+            android:tint="@color/pf_text_secondary" />
+
+        <ImageButton
+            android:id="@+id/webview_terminal_button"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@android:drawable/ic_menu_manage"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:scaleType="centerInside"
+            android:padding="8dp"
+            android:contentDescription="@string/webview_switch_to_terminal"
+            android:tint="@color/pf_accent" />
+
+    </LinearLayout>
+
+    <!-- Thin accent divider -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/pf_bg_tertiary" />
+
+    <!-- Loading progress bar -->
+    <ProgressBar
+        android:id="@+id/webview_progress"
+        style="@android:style/Widget.ProgressBar.Horizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:max="100"
+        android:progressTint="@color/pf_accent"
+        android:progressBackgroundTint="@android:color/transparent"
+        android:visibility="gone" />
+
+    <!-- WebView -->
+    <WebView
+        android:id="@+id/codefactory_webview"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
+
+</LinearLayout>

@@ -258,6 +258,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         setToggleKeyboardView();
 
+        setDashboardButtonView();
+
         registerForContextMenu(mTerminalView);
         if (mCodefactorySurfaceView != null) {
             registerForContextMenu(mCodefactorySurfaceView);
@@ -437,6 +439,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Update the {@link TerminalSession} and {@link TerminalEmulator} clients.
         mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
+
+        // Auto-activate GPU renderer since the classic TerminalView is a no-op stub.
+        // Delay slightly to ensure the session and surface are ready.
+        if (mCodefactorySurfaceView != null && !mGpuRendererActive) {
+            mCodefactorySurfaceView.post(() -> toggleGpuRenderer());
+        }
     }
 
     @Override
@@ -739,6 +747,17 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             toggleTerminalToolbar();
             return true;
         });
+    }
+
+    private void setDashboardButtonView() {
+        View dashboardButton = findViewById(R.id.drawer_dashboard_button);
+        if (dashboardButton != null) {
+            dashboardButton.setOnClickListener(v -> {
+                getDrawer().closeDrawers();
+                Intent intent = CodefactoryWebViewActivity.newInstance(TermuxActivity.this);
+                startActivity(intent);
+            });
+        }
     }
 
 

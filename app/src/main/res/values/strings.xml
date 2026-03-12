@@ -56,6 +56,13 @@
     <string name="drawer_settings_toggle_toolbar">Toggle Toolbar</string>
     <string name="drawer_settings_all_settings">All Settings</string>
     <string name="drawer_settings_gpu_renderer">GPU Renderer</string>
+    <!-- Codefactory WebView / Dashboard -->
+    <string name="drawer_dashboard">Dashboard</string>
+    <string name="webview_title_dashboard">Dashboard</string>
+    <string name="webview_back">Go back</string>
+    <string name="webview_reload">Reload page</string>
+    <string name="webview_switch_to_terminal">Switch to terminal</string>
+
     <string name="title_rename_floor">Rename Floor</string>
     <string name="action_rename_floor_confirm">Rename</string>
     <string name="title_create_floor">New Floor</string>
