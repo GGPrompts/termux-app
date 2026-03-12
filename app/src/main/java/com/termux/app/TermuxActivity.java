@@ -464,11 +464,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // Update the {@link TerminalSession} and {@link TerminalEmulator} clients.
         mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
 
-        // Auto-activate GPU renderer since the classic TerminalView is a no-op stub.
-        // Delay slightly to ensure the session and surface are ready.
-        if (mCodefactorySurfaceView != null && !mGpuRendererActive) {
-            mCodefactorySurfaceView.post(() -> toggleGpuRenderer());
-        }
+        // GPU renderer activation is opt-in via Settings > Advanced > GPU Renderer toggle.
+        // No auto-activation here — the Java terminal path must remain the default.
 
         // Check if the backend has failed and show error dialog if needed.
         checkAndShowBackendErrorDialog();
